@@ -216,6 +216,24 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     injectRdbOnDeviceComponent: boolean;
 
     /**
+     * Configuration for profiling functionality
+     */
+    profiling?: {
+        /**
+         * Whether profiling is enabled
+         */
+        enable?: boolean;
+        /**
+         * Directory where profile files should be stored
+         */
+        dir?: string;
+        /**
+         * The name of the profile file. Can include variables like ${appTitle} and ${timestamp}
+         */
+        filename?: string;
+    };
+
+    /**
      * Base path to the folder containing RDB files for OnDeviceComponent
      */
     rdbFilesBasePath: string;
