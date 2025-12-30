@@ -303,6 +303,21 @@ export class SceneGraphDebugCommandController {
             }
         }
     }
+    public async fetch(path: string): Promise<string> {
+        let baseUrl = `http://${this.ip}:8060`;
+        const url = `${baseUrl}${path}`;
+
+        console.log(`Fetching URL: GET ${url}`);
+        
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Content-Type": "text/xml",
+            },
+        });
+        
+        return response.text();
+    }
     public async fetchPost(path, body) {
         const ip = this.ip;
         const baseUrl = `http://${ip}:8060`;
