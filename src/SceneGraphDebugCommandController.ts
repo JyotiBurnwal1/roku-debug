@@ -1,9 +1,6 @@
 import { logger } from './logging';
-
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
-const vscode = require('vscode');
-const parseXml = require('xml2js').parseStringPromise;
 
 export class SceneGraphDebugCommandController {
     constructor(public host: string, port?: number) {
@@ -18,10 +15,6 @@ export class SceneGraphDebugCommandController {
     public execTimeout = 2000;
     private port;
     private maxBufferLength = 5242880;
-    private activeChannels = [];
-    private ip = "192.168.1.12" // default IP, can be made configurable TODO:
-    private useWebSocket = false; // set to true to use WebSocket tracing TODO: make this configurable
-
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
 
     public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
@@ -303,125 +296,6 @@ export class SceneGraphDebugCommandController {
             }
         }
     }
-    public async fetch(path: string): Promise<string> {
-        let baseUrl = `http://${this.ip}:8060`;
-        const url = `${baseUrl}${path}`;
-
-        console.log(`Fetching URL: GET ${url}`);
-        
-        const response = await fetch(url, {
-            method: "GET",
-            headers: {
-                "Content-Type": "text/xml",
-            },
-        });
-        
-        return response.text();
-    }
-    public async fetchPost(path, body) {
-        const ip = this.ip;
-        const baseUrl = `http://${ip}:8060`;
-        const url = `${baseUrl}${path}`;
-        
-        console.log(`Fetching URL: POST ${url}`);
-
-        return fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "text/xml",
-            },
-            body: body,
-        });
-    }
-
-    public async createFolderIfNotExists(folderName) {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        
-        if (workspaceFolders && workspaceFolders.length > 0) {
-            const folderDir = vscode.Uri.joinPath(workspaceFolders[0].uri, folderName);
-            await vscode.workspace.fs.createDirectory(folderDir);
-            return folderDir;
-        } else {
-            vscode.window.showErrorMessage("No workspace folder found.");
-            throw new Error("No workspace folder found.");
-        }
-    }
-
-    public async startTracing() {
-        const emptyResponse = this.getBlankResponseObject("startTracing");
-
-        try {
-            const result = await this.fetch("/query/active-app");
-            const parsedResult = await parseXml(result);
-            console.log("Parsed XML Result:", parsedResult);
-            this.activeChannels = parsedResult.apps.app;
-        } catch (error) {
-            console.error("Error parsing XML:", error);
-            console.log("Failed to refresh activeChannels.");
-            return emptyResponse;
-        }
-        if (!this.activeChannels.length) {
-            console.log("Please select a channel before starting.");
-            return emptyResponse;
-        }
-
-        if (!this.useWebSocket) {
-            await this.fetchPost(`/perfetto/stop/${this.activeChannels[0]}`, "");
-            await this.fetchPost(`/perfetto/enable/${this.activeChannels[0]}`, "");
-            const startResult = await this.fetchPost(`/perfetto/start/${this.activeChannels[0]}`, "");
-            // making change
-            console.log("Start result:", startResult);
-            
-            const response = emptyResponse;
-            response.result.data = startResult;
-            response.result.rawResponse = 'Tracing started';
-            return response;
-        } else {
-            const channelName = this.activeChannels.find((r) => r.$.id === this.activeChannels[0])?._ || "channel";
-            const sanitizedChannelName = channelName.replace(/[^a-zA-Z0-9]/g, "-");
-            const timestamp = new Date().toISOString().replace(/[^a-zA-Z0-9]/g, "-");
-            const filename = `${this.activeChannels[0]}-${sanitizedChannelName}.${timestamp}.pftrace`;
-            
-            const folderUri = await this.createFolderIfNotExists("perfetto");
-            const fileUri = vscode.Uri.file(`${folderUri.fsPath}/${filename}`);
-            
-            // TODO: stop previous trace if any
-            // if (stopCB) {
-            //   try {
-            //     stopCB();
-            //   } catch (error) {
-            //     console.error("Error stopping previous WebSocket trace:", error);
-            //   }
-            //   stopCB = null;
-            // }
-            
-            try {
-                await this.fetchPost(`/perfetto/enable/${this.activeChannels[0]}`, "");
-                // TODO: implement wsSaveTrace
-                // stopCB = await this.wsSaveTrace("/perfetto-session", fileUri.fsPath);
-                
-                const response = emptyResponse;
-                response.result.data = `WebSocket trace started, saving to ${fileUri.fsPath}`;
-                response.result.rawResponse = `WebSocket trace started, saving to ${fileUri.fsPath}`;
-                return response;
-            } catch (error) {
-                console.error("Error starting WebSocket trace:", error);
-                vscode.window.showErrorMessage("Failed to start WebSocket trace.");
-                return emptyResponse;
-            }
-        }
-    }
-
-    async stopTracing() {
-        const emptyResponse = this.getBlankResponseObject("stopTracing");
-        const response = await this.fetchPost(`/perfetto/stop/${this.activeChannels[0]}`, "");
-        // TODO: implement write tracing to a file 
-        let responseObj = emptyResponse;
-        responseObj.result.data = response;
-        responseObj.result.rawResponse = "Tracing stopped";
-        return responseObj;
-    }
-
 
     /**
      * Returns a simple starting object used for responses
