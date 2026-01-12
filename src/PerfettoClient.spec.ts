@@ -4,7 +4,7 @@ import { EventEmitter } from "events";
 import * as sinonActual from "sinon";
 let sinon = sinonActual.createSandbox();
 
-describe("ECP", () => {
+describe("PerfettoClient", () => {
   let fetchStub: sinon.SinonStub;
   let mkdirSyncStub: sinon.SinonStub;
   let createWriteStreamStub: sinon.SinonStub;

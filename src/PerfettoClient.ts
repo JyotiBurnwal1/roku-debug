@@ -1,10 +1,10 @@
 import { WebSocket } from "ws";
 import * as fs from "fs";
 import * as pathModule from "path";
-
-export class ECP {
+ 
+export class PerfettoClient {
   /**
-   * ECP (External Control Protocol) class for Roku devices
+   * PerfettoClient class for Roku devices
    * This class provides methods to interact with Roku devices using the ECP API.
    */
   
