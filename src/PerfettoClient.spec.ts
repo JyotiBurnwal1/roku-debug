@@ -68,7 +68,7 @@ describe("PerfettoClient", () => {
     it("should create websocket and file stream", async () => {
       const ecp = new ECP("10.0.0.1");
 
-      const shutdown = await ecp.wsSaveTrace("/trace", "/tmp/file.bin");
+      const shutdown = await ecp.wsSaveTrace("/trace", "/tmp/file.perfetto-trace");
 
       expect(wsConstructorStub.calledOnce).to.be.true;
       expect(mkdirSyncStub.calledOnce).to.be.true;
@@ -78,7 +78,7 @@ describe("PerfettoClient", () => {
 
     it("should write binary websocket messages to file", async () => {
       const ecp = new ECP("10.0.0.1");
-      await ecp.wsSaveTrace("/trace", "/tmp/file.bin");
+      await ecp.wsSaveTrace("/trace", "/tmp/file.perfetto-trace");
 
       const buffer = Buffer.from([1, 2, 3]);
       fakeWs.emit("message", buffer, true);
@@ -88,7 +88,7 @@ describe("PerfettoClient", () => {
 
     it("should ignore non-binary messages", async () => {
       const ecp = new ECP("10.0.0.1");
-      await ecp.wsSaveTrace("/trace", "/tmp/file.bin");
+      await ecp.wsSaveTrace("/trace", "/tmp/file.perfetto-trace");
 
       fakeWs.emit("message", "text", false);
       expect(fakeStream.write.called).to.be.false;
@@ -98,7 +98,7 @@ describe("PerfettoClient", () => {
       const exitStub = sinon.stub(process, "exit");
       const ecp = new ECP("10.0.0.1");
 
-      const shutdown = await ecp.wsSaveTrace("/trace", "/tmp/file.bin");
+      const shutdown = await ecp.wsSaveTrace("/trace", "/tmp/file.perfetto-trace");
       shutdown!();
 
       expect(fakeStream.end.called).to.be.true;
