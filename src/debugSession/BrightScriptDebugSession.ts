@@ -360,6 +360,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
+        if (config.profiling?.enable){
+            config.profiling.dir ??= s`${config.cwd}/traces/`;
+            config.profiling.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+        }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
         if (typeof config.enableVariablesPanel !== 'boolean') {
