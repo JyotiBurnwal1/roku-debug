@@ -30,7 +30,7 @@ describe("PerfettoControls", () => {
     it("should call enable and start endpoints and return success response", async () => {
       fetchStub.resolves({ ok: true } as any);
 
-      const response = await perfetto.startTracing();
+      const response = await perfetto.startTracing("");
 
       expect(fetchStub.calledTwice).to.be.true;
 
@@ -50,7 +50,7 @@ describe("PerfettoControls", () => {
     it("should set error response when enable/start fails", async () => {
       fetchStub.rejects(new Error("Network error"));
 
-      const response = await perfetto.startTracing();
+      const response = await perfetto.startTracing("");
 
       expect(fetchStub.calledOnce).to.be.true;
       expect(response.error).to.be.true;
@@ -62,7 +62,7 @@ describe("PerfettoControls", () => {
     it("should stop tracing and return success response when request succeeds", async () => {
       fetchStub.resolves({ ok: true } as any);
 
-      const response = await perfetto.stopTracing();
+      const response = await perfetto.stopTracing("");
 
       expect(fetchStub.calledOnce).to.be.true;
       expect(fetchStub.firstCall.args[0]).to.equal(
@@ -78,7 +78,7 @@ describe("PerfettoControls", () => {
     it("should return error response when stop request fails", async () => {
       fetchStub.resolves(null as any);
 
-      const response = await perfetto.stopTracing();
+      const response = await perfetto.stopTracing("");
 
       expect(response).to.deep.equal({
         message: "Error stopping tracing",
