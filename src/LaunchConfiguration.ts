@@ -222,7 +222,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
         /**
          * Whether profiling is enabled
          */
-        enable?: boolean;
+        enabled?: boolean;
         /**
          * Directory where profile files should be stored
          */

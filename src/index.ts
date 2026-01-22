@@ -14,5 +14,4 @@ export * from './ChanperfTracker';
 export * from './SceneGraphDebugCommandController';
 export * from './adapters/TelnetAdapter';
 export * from './managers/LocationManager';
-export * from './PerfettoController';
-export * from './PerfettoClient'
+export * from './PerfettoManager';

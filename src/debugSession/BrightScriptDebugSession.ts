@@ -301,7 +301,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    private async showPopupMessage<T extends string>(message: string, severity: 'error' | 'warn' | 'info', modal = false, actions?: T[]): Promise<T> {
+    public async showPopupMessage<T extends string>(message: string, severity: 'error' | 'warn' | 'info', modal = false, actions?: T[]): Promise<T> {
         const response = await this.sendCustomRequest('showPopupMessage', { message: message, severity: severity, modal: modal, actions: actions });
         return response.selectedAction;
     }
@@ -360,7 +360,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
-        if (config.profiling?.enable){
+        if (config.profiling?.enabled){
             config.profiling.dir ??= s`${config.cwd}/traces/`;
             config.profiling.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
         }
@@ -594,6 +594,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
         this.breakpointManager.clearBreakpointLastState();
+    }
+
+    /**
+     * Extract specific keys from the launch configuration
+     * @param keys - Array of keys to extract from launch configuration
+     * @returns Object containing only the specified keys and their values
+     */
+    public getSelectedConfig(keys: string[]): Record<string, unknown> {
+        const result: Record<string, unknown> = {};
+        
+        for (const key of keys) {
+            if (this.launchConfiguration && key in this.launchConfiguration) {
+            result[key] = this.launchConfiguration[key];
+            }
+        }
+
+        return result;
     }
 
     /**
