@@ -47,6 +47,7 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
+import { PerfettoManager } from '../PerfettoManager';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
@@ -601,16 +602,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param keys - Array of keys to extract from launch configuration
      * @returns Object containing only the specified keys and their values
      */
-    public getSelectedConfig(keys: string[]): Record<string, unknown> {
-        const result: Record<string, unknown> = {};
-        
-        for (const key of keys) {
-            if (this.launchConfiguration && key in this.launchConfiguration) {
-            result[key] = this.launchConfiguration[key];
-            }
-        }
-
-        return result;
+    public getPerfettoConfig(): Record<string, unknown> {
+        return this.launchConfiguration.profiling || {};
     }
 
     /**
@@ -2648,6 +2641,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (e) {
             this.logger.error(e);
         }
+        //stop perfetto tracing if it's running
+        // new PerfettoManager(this.launchConfiguration.host).stopTracing();
 
         //close the debugger connection
         try {

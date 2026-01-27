@@ -2,78 +2,60 @@ import * as fs from "fs";
 import * as path from "path";
 import * as fsExtra from "fs-extra";
 import { WebSocket } from "ws";
-import { BrightScriptDebugSession } from "./debugSession/BrightScriptDebugSession";
+import { util } from "./util";
 
-export class PerfettoControls {
+export class PerfettoManager {
     private port: number = 8060;
     private selectedChannel: string = "dev";
-    private ws: WebSocket | null = null;
-    private configs: any;
-    private brightScriptDebugSession = new BrightScriptDebugSession();
+    private ws: WebSocket | null;
+    public perfettoConfig: {
+        [key: string]: any;
+    };
+    private config: Record<string, unknown>;
 
     constructor(public host: string) {
         this.host = host;
-        this.setConfigurations();
+        this.setConfigurations()
     }
 
     private setConfigurations(): void {
-        const config = this.brightScriptDebugSession.getSelectedConfig(["profiling"]);
-        this.configs = config.perfetto || {};
+        this.config = util._debugSession.getPerfettoConfig()
     }
 
-    public async startTracing(): Promise<void> {
+    public async startTracing(): Promise<{ error?: string }> {
         try {
-            const tracesDir = path.join(process.cwd(), "perfetto");
+            const tracesDir = path.join("/home/jyoti/Downloads/updated-DCl/dcl", "perfetto");
             fsExtra.ensureDirSync(tracesDir);
-            const timestamp = new Date().toLocaleTimeString();
-            this.brightScriptDebugSession.showPopupMessage(
-                `Perfetto tracing started at ${timestamp}.`,
-                "info",
-                true
-            );
-            await this.wsSaveTrace("/perfetto-session", "trace.perfetto-trace");
+
+            const filename = path.join(tracesDir, "trace.perfetto-trace");
+
+            await this.wsSaveTrace("/perfetto-session", filename);
+            return {
+                error: JSON.stringify(this.perfettoConfig)
+            }
         } catch (error) {
-            this.brightScriptDebugSession.showPopupMessage(
-                `Error starting Perfetto tracing: ${error}`,
-                "error",
-                true
-            );
+            return {
+                error: `Error starting Perfetto tracing: ${error}`,
+            }
         }
     }
 
-    public async stopTracing(): Promise<void> {
+    public async stopTracing(): Promise<{ error?: string }> {
         if (!this.ws) {
-            this.brightScriptDebugSession.showPopupMessage(
-                "WebSocket tracing was not started. Cannot stop tracing.",
-                "error",
-                true
-            );
-            return;
+            return {
+                error: 'No active Perfetto tracing session to stop.'
+            }
         }
-
-        const timestamp = new Date().toLocaleTimeString();
-        this.brightScriptDebugSession.showPopupMessage(
-            `Perfetto tracing stopped at ${timestamp}.`,
-            "info",
-            true
-        );
         this.ws = null;
     }
 
-    public async enableTracing(): Promise<void> {
+    public async enableTracing(): Promise<{ error?: string }> {
         try {
             await this.ecpGetPost(`/perfetto/enable/${this.selectedChannel}`, "post", "");
-            this.brightScriptDebugSession.showPopupMessage(
-                "Perfetto tracing enabled.",
-                "info",
-                true
-            );
         } catch (error) {
-            this.brightScriptDebugSession.showPopupMessage(
-                `Error enabling Perfetto tracing: ${error}`,
-                "error",
-                true
-            );
+            return {
+                error: `Error enabling Perfetto tracing: ${error}`,
+            }
         }
     }
 
@@ -107,8 +89,7 @@ export class PerfettoControls {
         this.ws = new WebSocket(url);
 
         // Ensure directory exists
-        fs.mkdirSync(path.dirname(filename), { recursive: true });
-
+        fs.mkdirSync(path.dirname("/home/jyoti/Downloads/updated-DCl/dcl/jyoti"), { recursive: true });
 
         // Create write stream in append mode
         const out = fs.createWriteStream(filename, { flags: "a" });
