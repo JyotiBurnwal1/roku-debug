@@ -19,17 +19,19 @@ export class PerfettoManager {
     }
 
     private setConfigurations(): void {
-        this.config = util._debugSession.getPerfettoConfig()
+        // this.config = util?._debugSession?.getPerfettoConfig()
     }
 
     public async startTracing(): Promise<{ error?: string }> {
+        await this.enableTracing();
         try {
             const tracesDir = path.join("/home/jyoti/Downloads/updated-DCl/dcl", "perfetto");
             fsExtra.ensureDirSync(tracesDir);
 
             const filename = path.join(tracesDir, "trace.perfetto-trace");
-
+            
             await this.wsSaveTrace("/perfetto-session", filename);
+
             return {
                 error: JSON.stringify(this.perfettoConfig)
             }
@@ -89,7 +91,7 @@ export class PerfettoManager {
         this.ws = new WebSocket(url);
 
         // Ensure directory exists
-        fs.mkdirSync(path.dirname("/home/jyoti/Downloads/updated-DCl/dcl/jyoti"), { recursive: true });
+        fs.mkdirSync(path.dirname(filename), { recursive: true });
 
         // Create write stream in append mode
         const out = fs.createWriteStream(filename, { flags: "a" });
