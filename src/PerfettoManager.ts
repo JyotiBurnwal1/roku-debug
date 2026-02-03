@@ -4,6 +4,17 @@ import * as fsExtra from "fs-extra";
 import { WebSocket } from "ws";
 import { util } from "./util";
 
+/**
+ * Configuration interface for Perfetto tracing
+ */
+interface PerfettoConfig {
+    host?: string;
+    enabled?: boolean;
+    dir?: string;
+    filename?: string;
+    rootDir?: string;
+}
+
 export class PerfettoManager {
     private port: number = 8060;
     private selectedChannel: string = "dev";
@@ -13,15 +24,32 @@ export class PerfettoManager {
     private currentTraceFile: string | null = null;
     private isTracing: boolean = false;
 
-    constructor() {
-    }
-
     /**
      * Get the profiling configuration from the debug session
      */
-    private getConfig(): { host?: string; enabled?: boolean; dir?: string; filename?: string } {
+    private getConfig(): PerfettoConfig {
         const config = util?._debugSession?.getPerfettoConfig() || {};
-        return config as any;
+        return config as PerfettoConfig;
+    }
+
+    /**
+     * Get app title from manifest file in cwd
+     */
+    private getAppTitle(cwd: string): string {
+        try {
+            const manifestPath = pathModule.join(cwd, 'manifest');
+
+            if (fs.existsSync(manifestPath)) {
+                const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+                const titleMatch = manifestContent.match(/^title=(.+)$/m);
+                if (titleMatch && titleMatch[1]) {
+                    return titleMatch[1].trim();
+                }
+            }
+        } catch (error) {
+            console.error('Error reading manifest file:', error);
+        }
+        return 'trace';
     }
 
     /**
@@ -34,15 +62,17 @@ export class PerfettoManager {
 
         try {
             const config = this.getConfig();
-            const tracesDir = config.dir || pathModule.join(process.cwd(), "traces");
+            const cwd = config.rootDir;
+            const tracesDir = config.dir || pathModule.join(cwd, "traces");
 
             // Ensure directory exists
             fsExtra.ensureDirSync(tracesDir);
 
-            const timestamp = new Date().toDateString().replace(/[:.]/g, '-');
-            const filename = (config.filename || 'trace_${timestamp}.perfetto-trace')
+            const timestamp = new Date().toLocaleString().replace(/[/:, ]/g, '-').replace(/-+/g, '-');
+            const appTitle = this.getAppTitle(cwd);
+            const filename = (config.filename || '${appTitle}_${timestamp}.perfetto-trace')
                 .replace('${timestamp}', timestamp)
-                .replace('${appTitle}', 'app'); // You can get appTitle from launch config if needed
+                .replace('${appTitle}', appTitle);
 
             const fullPath = pathModule.join(tracesDir, filename);
             this.currentTraceFile = fullPath;
@@ -223,4 +253,5 @@ export class PerfettoManager {
             });
         }
     }
+
 }

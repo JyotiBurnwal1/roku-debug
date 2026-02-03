@@ -623,6 +623,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public getPerfettoConfig(): Record<string, unknown> {
         return {
             host: this.launchConfiguration.host,
+            rootDir: this.launchConfiguration.rootDir,
             ...this.launchConfiguration.profiling?.perfettoEvent || {}
         };
     }
