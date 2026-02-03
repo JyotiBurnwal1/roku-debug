@@ -36,6 +36,7 @@ export class PerfettoManager {
      * Get app title from manifest file in cwd
      */
     private getAppTitle(cwd: string): string {
+      if (cwd) {
         try {
             const manifestPath = pathModule.join(cwd, 'manifest');
 
@@ -49,6 +50,7 @@ export class PerfettoManager {
         } catch (error) {
             console.error('Error reading manifest file:', error);
         }
+      }
         return 'trace';
     }
 
@@ -68,11 +70,7 @@ export class PerfettoManager {
             // Ensure directory exists
             fsExtra.ensureDirSync(tracesDir);
 
-            const timestamp = new Date().toLocaleString().replace(/[/:, ]/g, '-').replace(/-+/g, '-');
-            const appTitle = this.getAppTitle(cwd);
-            const filename = (config.filename || '${appTitle}_${timestamp}.perfetto-trace')
-                .replace('${timestamp}', timestamp)
-                .replace('${appTitle}', appTitle);
+            let filename = this.getFilename(config)
 
             const fullPath = pathModule.join(tracesDir, filename);
             this.currentTraceFile = fullPath;
@@ -89,6 +87,30 @@ export class PerfettoManager {
                 error: `Error starting Perfetto tracing: ${error instanceof Error ? error.message : String(error)}`,
             };
         }
+    }
+
+    private getFilename(config: PerfettoConfig): string {
+        let filename = (config.filename || '${appTitle}_${timestamp}.perfetto-trace')
+
+        if (filename.includes('${timestamp}')) {
+            const timestamp = new Date().toLocaleString().replace(/[/:, ]/g, '-').replace(/-+/g, '-');
+            filename = filename.replace('${timestamp}', timestamp);
+            // Remove sequence if the user has put timestamp
+            if (filename.includes('${sequence}')) {
+                filename = filename.replace(/_?\$\{sequence\}_?/g, '');
+            }
+        }
+
+        const appTitle = this.getAppTitle(config.rootDir || '');
+        if (filename.includes('${appTitle}')) {
+            filename = filename.replace('${appTitle}', appTitle);
+        }
+
+        // TODO get sequence number if needed
+        if (filename.includes('${sequence}')) {
+        }
+
+        return filename;
     }
 
     /**
