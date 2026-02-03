@@ -74,6 +74,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         util._debugSession = this;
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
+        this.perfettoManager = new PerfettoManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
@@ -142,6 +143,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variables: Record<number, AugmentedVariable> = {};
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
+
+    private perfettoManager: any;
 
     private rendezvousTracker: RendezvousTracker;
 
@@ -361,9 +364,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
-        if (config.profiling?.enabled){
-            config.profiling.dir ??= s`${config.cwd}/traces/`;
-            config.profiling.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+        if (config.profiling?.perfettoEvent?.enable){
+            config.profiling.perfettoEvent.dir ??= s`${config.cwd}/traces/`;
+            config.profiling.perfettoEvent.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
         }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
@@ -584,6 +587,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         }
 
+        if(this.launchConfiguration.profiling?.perfettoEvent?.enable && !this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
+            try {
+                const enableResult = await this.perfettoManager.enableTracing();
+                if (enableResult?.error) {
+                    this.logger.error('Failed to enable perfetto tracing', enableResult.error);
+                    this.sendEvent(new LogOutputEvent(`Failed to enable perfetto tracing: ${enableResult.error}`));
+                } else {
+                    this.logger.log('Perfetto tracing enabled');
+                    this.sendEvent(new LogOutputEvent('Perfetto tracing enabled'));
+                }
+            } catch (e) {
+                this.logger.error('Failed to enable perfetto tracing', e);
+            }
+        }
+
         logEnd();
     }
 
@@ -603,7 +621,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @returns Object containing only the specified keys and their values
      */
     public getPerfettoConfig(): Record<string, unknown> {
-        return this.launchConfiguration.profiling || {};
+        return {
+            host: this.launchConfiguration.host,
+            ...this.launchConfiguration.profiling?.perfettoEvent || {}
+        };
     }
 
     /**
@@ -1010,7 +1031,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
-
         } else if (command === 'chanperf.clearHistory') {
             this.rokuAdapter.clearChanperfHistory();
 
@@ -1019,6 +1039,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'popupMessageEventResponse') {
             this.emit('popupMessageEventResponse', args);
+
+        } else if (command === 'startTracing') {
+            this.perfettoManager.startTracing();
+
+        } else if (command === 'stopTracing') {
+            this.perfettoManager.stopTracing();
+        } else if (command === 'autoStartTracing') {
+            this.perfettoManager.enableTracing().then(() => {
+                this.perfettoManager.startTracing();
+            })
         }
         this.sendResponse(response);
     }

@@ -219,18 +219,24 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Configuration for profiling functionality
      */
     profiling?: {
-        /**
-         * Whether profiling is enabled
-         */
-        enabled?: boolean;
-        /**
-         * Directory where profile files should be stored
-         */
-        dir?: string;
-        /**
-         * The name of the profile file. Can include variables like ${appTitle} and ${timestamp}
-         */
-        filename?: string;
+        perfettoEvent?: {
+            /**
+             * Whether perfetto event profiling is enabled
+             */
+            enable?: boolean;
+            /**
+             * Directory where perfetto profile files should be stored
+             */
+            dir?: string;
+            /**
+             * The name of the perfetto profile file. Can include variables like ${appTitle} and ${timestamp}
+             */
+            filename?: string;
+            /**
+             * Whether to connect to perfetto on debug session start
+             */
+            connectOnStart?: boolean;
+        };
     };
 
     /**
