@@ -293,7 +293,7 @@ export class PerfettoManager {
 
         if (this.ws) {
             try {
-                this.ws.close();
+                this.ws.terminate();
             } catch (e) {
                 console.error('Error closing WebSocket:', e);
             }
