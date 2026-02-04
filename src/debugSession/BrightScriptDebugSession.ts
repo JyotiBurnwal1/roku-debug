@@ -372,8 +372,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
-        if (config.profiling?.perfettoEvent?.enable){
+        if (config.profiling?.perfettoEvent?.enable) {
             config.profiling.perfettoEvent.dir ??= s`${config.cwd}/traces/`;
+            // eslint-disable-next-line no-template-curly-in-string
             config.profiling.perfettoEvent.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
         }
 
@@ -595,7 +596,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         }
 
-        if(this.launchConfiguration.profiling?.perfettoEvent?.enable && !this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
+        if (this.launchConfiguration.profiling?.perfettoEvent?.enable && !this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
             try {
                 const enableResult = await this.perfettoManager.enableTracing();
                 if (enableResult?.error) {
