@@ -47,7 +47,8 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
-import { PerfettoManager } from '../PerfettoManager';
+import type { PerfettoManager } from '../PerfettoManager';
+import { PerfettoManager as PerfettoManagerClass } from '../PerfettoManager';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
@@ -82,7 +83,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         util._debugSession = this;
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
-        this.perfettoManager = new PerfettoManager();
+        this.perfettoManager = new PerfettoManagerClass();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
@@ -152,7 +153,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
-    private perfettoManager: any;
+    private perfettoManager: PerfettoManager;
 
     private rendezvousTracker: RendezvousTracker;
 
@@ -313,7 +314,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    public async showPopupMessage<T extends string>(message: string, severity: 'error' | 'warn' | 'info', modal = false, actions?: T[]): Promise<T> {
+    private async showPopupMessage<T extends string>(message: string, severity: 'error' | 'warn' | 'info', modal = false, actions?: T[]): Promise<T> {
         const response = await this.sendCustomRequest('showPopupMessage', { message: message, severity: severity, modal: modal, actions: actions });
         return response.selectedAction;
     }

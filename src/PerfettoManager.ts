@@ -1,3 +1,4 @@
+/* eslint-disable no-template-curly-in-string */
 import * as fs from 'fs';
 import * as pathModule from 'path';
 import * as fsExtra from 'fs-extra';
@@ -79,7 +80,7 @@ export class PerfettoManager {
             // Ensure directory exists
             fsExtra.ensureDirSync(tracesDir);
 
-            let filename = this.getFilename(config);
+            let filename = this.getFilename(config, tracesDir);
 
             const fullPath = pathModule.join(tracesDir, filename);
             this.currentTraceFile = fullPath;
@@ -98,39 +99,65 @@ export class PerfettoManager {
         }
     }
 
-    private getFilename(config: PerfettoConfig): string {
-        // eslint-disable-next-line no-template-curly-in-string
+    private getFilename(config: PerfettoConfig, tracesDir: string): string {
         let filename = config.filename || '${appTitle}_${timestamp}.perfetto-trace';
 
-        // eslint-disable-next-line no-template-curly-in-string
         if (filename.includes('${timestamp}')) {
             const timestamp = new Date()
                 .toLocaleString()
                 .replace(/[/:, ]/g, '-')
                 .replace(/-+/g, '-');
-            // eslint-disable-next-line no-template-curly-in-string
             filename = filename.replace('${timestamp}', timestamp);
             // Remove sequence if the user has put timestamp
-            // eslint-disable-next-line no-template-curly-in-string
             if (filename.includes('${sequence}')) {
                 filename = filename.replace(/_?\$\{sequence\}_?/g, '');
             }
         }
 
         const appTitle = this.getAppTitle(config.rootDir || '');
-        // eslint-disable-next-line no-template-curly-in-string
         if (filename.includes('${appTitle}')) {
-            // eslint-disable-next-line no-template-curly-in-string
             filename = filename.replace('${appTitle}', appTitle);
         }
 
-        // TODO get sequence number if needed
-        // eslint-disable-next-line no-template-curly-in-string
         if (filename.includes('${sequence}')) {
-            // placeholder for future implementation
+            const nextSequence = this.getNextSequenceNumber(filename, tracesDir);
+            filename = filename.replace('${sequence}', String(nextSequence));
         }
 
         return filename;
+    }
+
+    /**
+     * Get the next sequence number by scanning existing files in the directory
+     */
+    private getNextSequenceNumber(filenameTemplate: string, tracesDir: string): number {
+        try {
+            if (!fs.existsSync(tracesDir)) {
+                return 1;
+            }
+
+            const parts = filenameTemplate.split('${sequence}');
+            const prefix = parts[0] || '';
+            const suffix = parts[1] || '';
+
+            const files = fs.readdirSync(tracesDir);
+            let maxSequence = 0;
+
+            for (const file of files) {
+                if (file.startsWith(prefix) && file.endsWith(suffix)) {
+                    const middle = file.slice(prefix.length, file.length - suffix.length);
+                    const seq = parseInt(middle, 10);
+                    if (!isNaN(seq) && seq > maxSequence) {
+                        maxSequence = seq;
+                    }
+                }
+            }
+
+            return maxSequence + 1;
+        } catch (error) {
+            console.error('Error getting sequence number:', error);
+            return 1;
+        }
     }
 
     /**
