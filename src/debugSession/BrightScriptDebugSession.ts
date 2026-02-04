@@ -62,6 +62,14 @@ import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
+/**
+ * Result type for Perfetto tracing operations
+ */
+interface PerfettoResult {
+    error?: string;
+    message?: string;
+}
+
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
         super();
@@ -1029,7 +1037,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Accepts custom events and requests from the extension
      * @param command name of the command to execute
      */
-    protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
+    protected async customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
         } else if (command === 'chanperf.clearHistory') {
@@ -1042,14 +1050,55 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.emit('popupMessageEventResponse', args);
 
         } else if (command === 'startTracing') {
-            this.perfettoManager.startTracing();
+            try {
+                const result: PerfettoResult = await this.perfettoManager.startTracing();
+                if (result?.error) {
+                    response.success = false;
+                    response.body = { message: result.error };
+                } else {
+                    response.success = true;
+                    response.body = { message: result?.message };
+                }
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
 
         } else if (command === 'stopTracing') {
-            this.perfettoManager.stopTracing();
+            try {
+                const result: PerfettoResult = await this.perfettoManager.stopTracing();
+                if (result?.error) {
+                    response.success = false;
+                    response.body = { message: result.error };
+                } else {
+                    response.success = true;
+                    response.body = { message: result?.message };
+                }
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
+
         } else if (command === 'autoStartTracing') {
-            this.perfettoManager.enableTracing().then(() => {
-                this.perfettoManager.startTracing();
-            })
+            try {
+                const enableResult: PerfettoResult = await this.perfettoManager.enableTracing();
+                if (enableResult?.error) {
+                    response.success = false;
+                    response.body = { message: enableResult.error };
+                } else {
+                    const startResult: PerfettoResult = await this.perfettoManager.startTracing();
+                    if (startResult?.error) {
+                        response.success = false;
+                        response.body = { message: startResult.error };
+                    } else {
+                        response.success = true;
+                        response.body = { message: startResult?.message };
+                    }
+                }
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
         }
         this.sendResponse(response);
     }
