@@ -2723,8 +2723,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (e) {
             this.logger.error(e);
         }
-        //stop perfetto tracing if it's running
-        // new PerfettoManager(this.launchConfiguration.host).stopTracing();
+        // stop perfetto tracing if it's running
+        this.perfettoManager.stopTracing();
 
         //close the debugger connection
         try {

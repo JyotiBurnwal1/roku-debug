@@ -35,6 +35,7 @@ describe('PerfettoManager', () => {
         mockWebSocket = new EventEmitter();
         mockWebSocket.readyState = 1; // WebSocket.OPEN
         mockWebSocket.close = sandbox.stub();
+        mockWebSocket.terminate = sandbox.stub();
         mockWebSocket.ping = sandbox.stub();
         mockWebSocket.pause = sandbox.stub();
         mockWebSocket.resume = sandbox.stub();
@@ -172,7 +173,7 @@ describe('PerfettoManager', () => {
 
             await perfettoManager.stopTracing();
 
-            expect(mockWebSocket.close.called).to.be.true;
+            expect(mockWebSocket.terminate.called).to.be.true;
             expect(mockWriteStream.end.called).to.be.true;
         });
     });
@@ -423,7 +424,7 @@ describe('PerfettoManager', () => {
 
             (perfettoManager as any).cleanup();
 
-            expect(mockWebSocket.close.called).to.be.true;
+            expect(mockWebSocket.terminate.called).to.be.true;
             expect((perfettoManager as any).ws).to.be.null;
         });
 
@@ -437,7 +438,7 @@ describe('PerfettoManager', () => {
         });
 
         it('handles WebSocket close errors gracefully', () => {
-            mockWebSocket.close = sandbox.stub().throws(new Error('Already closed'));
+            mockWebSocket.terminate = sandbox.stub().throws(new Error('Already closed'));
             (perfettoManager as any).ws = mockWebSocket;
 
             expect(() => (perfettoManager as any).cleanup()).to.not.throw();
