@@ -179,10 +179,9 @@ export class PerfettoManager {
         console.log(
             `Enabling Perfetto tracing on channel ${this.selectedChannel} at host ${this.config.host}`
         );
-        const response = await this.ecpGetPost(
+        const response = await this.ecpPost(
             `/perfetto/enable/${this.selectedChannel}`,
-            '',
-            'post'
+            ''
         );
         if (!response.ok) {
             const responseText = await response.text().catch(() => '');
@@ -294,25 +293,21 @@ export class PerfettoManager {
     /**
      * Make HTTP request to Roku ECP
      */
-    private async ecpGetPost(
+    private async ecpPost(
         route: string,
-        body: string,
-        method: 'post' | 'get' = 'get'
+        body: string
     ): Promise<Response> {
-        const host = this.config.host;
-        if (!host) {
+        if (!this.config.host) {
             throw new Error('No host configured for Perfetto tracing');
         }
-        const url = `http://${host}:${this.port}${route}`;
+        const url = `http://${this.config.host}:${this.port}${route}`;
 
-        if (method === 'post') {
-            return fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: body
-            });
-        }
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: body
+        });
     }
 }

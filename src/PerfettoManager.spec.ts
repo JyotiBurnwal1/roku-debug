@@ -4,32 +4,27 @@ import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as pathModule from 'path';
 import { PerfettoManager } from './PerfettoManager';
-import { util } from './util';
 import { EventEmitter } from 'events';
 
 describe('PerfettoManager', () => {
     let perfettoManager: PerfettoManager;
     let sandbox: sinon.SinonSandbox;
-    let mockDebugSession: any;
+    let mockConfig: any;
     let mockWebSocket: any;
     let mockWriteStream: any;
 
     beforeEach(() => {
         sandbox = sinon.createSandbox();
-        perfettoManager = new PerfettoManager();
 
-        mockDebugSession = {
-            getPerfettoConfig: sandbox.stub().returns({
-                host: '192.168.1.100',
-                enabled: true,
-                dir: '/tmp/traces',
-                filename: 'test_${timestamp}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
-                rootDir: '/workspace/project'
-            })
+        mockConfig = {
+            host: '192.168.1.100',
+            enabled: true,
+            dir: '/tmp/traces',
+            filename: 'test_${timestamp}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
+            rootDir: '/workspace/project'
         };
 
-        // Mock util._debugSession
-        (util as any)._debugSession = mockDebugSession;
+        perfettoManager = new PerfettoManager(mockConfig);
 
         // Create mock WebSocket
         mockWebSocket = new EventEmitter();
@@ -43,7 +38,11 @@ describe('PerfettoManager', () => {
         // Create mock WriteStream
         mockWriteStream = new EventEmitter();
         mockWriteStream.write = sandbox.stub().returns(true);
-        mockWriteStream.end = sandbox.stub();
+        mockWriteStream.end = sandbox.stub().callsFake((callback?: () => void) => {
+            if (callback) {
+                callback();
+            }
+        });
 
         // Mock fs-extra
         sandbox.stub(fsExtra, 'ensureDirSync');
@@ -57,18 +56,19 @@ describe('PerfettoManager', () => {
 
     afterEach(() => {
         sandbox.restore();
-        delete (util as any)._debugSession;
         delete (global as any).fetch;
     });
 
     describe('startTracing', () => {
-        it('returns error when tracing is already active', async () => {
-            // Start tracing first
+        it('throws error when tracing is already active', async () => {
             (perfettoManager as any).isTracing = true;
 
-            const result = await perfettoManager.startTracing();
-
-            expect(result.error).to.equal('Tracing is already active');
+            try {
+                await perfettoManager.startTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.equal('Tracing is already active');
+            }
         });
 
         it('auto-enables tracing if not already enabled', async () => {
@@ -83,13 +83,13 @@ describe('PerfettoManager', () => {
                 return mockWebSocket;
             });
 
-            const result = await perfettoManager.startTracing();
+            await perfettoManager.startTracing();
 
             expect((perfettoManager as any).isEnabled).to.be.true;
-            expect(result.message).to.include('Perfetto tracing started');
+            expect((perfettoManager as any).isTracing).to.be.true;
         });
 
-        it('returns error if enabling fails', async () => {
+        it('throws error if enabling fails', async () => {
             (global as any).fetch = sandbox.stub().resolves({
                 ok: false,
                 status: 500,
@@ -97,9 +97,12 @@ describe('PerfettoManager', () => {
                 text: () => Promise.resolve('Server error')
             });
 
-            const result = await perfettoManager.startTracing();
-
-            expect(result.error).to.include('Failed to enable tracing');
+            try {
+                await perfettoManager.startTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('Failed to enable tracing');
+            }
         });
 
         it('creates trace directory if it does not exist', async () => {
@@ -119,7 +122,7 @@ describe('PerfettoManager', () => {
         });
 
         it('uses default traces directory when not configured', async () => {
-            mockDebugSession.getPerfettoConfig.returns({
+            perfettoManager = new PerfettoManager({
                 host: '192.168.1.100',
                 enabled: true,
                 rootDir: '/workspace/project'
@@ -144,23 +147,23 @@ describe('PerfettoManager', () => {
     });
 
     describe('stopTracing', () => {
-        it('returns error when no active tracing session', async () => {
-            const result = await perfettoManager.stopTracing();
-
-            expect(result.error).to.equal('No active tracing session to stop');
+        it('throws error when no active tracing session', async () => {
+            try {
+                await perfettoManager.stopTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.equal('No active tracing session to stop');
+            }
         });
 
-        it('stops tracing and returns success message', async () => {
-            // Set up active tracing state
+        it('stops tracing successfully', async () => {
             (perfettoManager as any).isTracing = true;
             (perfettoManager as any).currentTraceFile = '/tmp/traces/test.perfetto-trace';
             (perfettoManager as any).ws = mockWebSocket;
             (perfettoManager as any).writeStream = mockWriteStream;
 
-            const result = await perfettoManager.stopTracing();
+            await perfettoManager.stopTracing();
 
-            expect(result.message).to.include('Perfetto tracing stopped');
-            expect(result.message).to.include('/tmp/traces/test.perfetto-trace');
             expect((perfettoManager as any).isTracing).to.be.false;
         });
 
@@ -185,9 +188,8 @@ describe('PerfettoManager', () => {
                 text: () => Promise.resolve('')
             });
 
-            const result = await perfettoManager.enableTracing();
+            await perfettoManager.enableTracing();
 
-            expect(result.message).to.include('Perfetto tracing enabled');
             expect((perfettoManager as any).isEnabled).to.be.true;
             expect((global as any).fetch.calledWith(
                 'http://192.168.1.100:8060/perfetto/enable/dev',
@@ -195,7 +197,7 @@ describe('PerfettoManager', () => {
             )).to.be.true;
         });
 
-        it('returns error when ECP request fails', async () => {
+        it('throws error when ECP request fails', async () => {
             (global as any).fetch = sandbox.stub().resolves({
                 ok: false,
                 status: 404,
@@ -203,30 +205,38 @@ describe('PerfettoManager', () => {
                 text: () => Promise.resolve('Endpoint not found')
             });
 
-            const result = await perfettoManager.enableTracing();
-
-            expect(result.error).to.include('Failed to enable tracing');
-            expect(result.error).to.include('404');
+            try {
+                await perfettoManager.enableTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('Failed to enable tracing');
+                expect((error as Error).message).to.include('404');
+            }
         });
 
-        it('returns error when no host configured', async () => {
-            mockDebugSession.getPerfettoConfig.returns({
+        it('throws error when no host configured', async () => {
+            perfettoManager = new PerfettoManager({
                 enabled: true,
                 dir: '/tmp/traces'
             });
 
-            const result = await perfettoManager.enableTracing();
-
-            expect(result.error).to.include('No host configured');
+            try {
+                await perfettoManager.enableTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('No host configured');
+            }
         });
 
         it('handles network errors gracefully', async () => {
             (global as any).fetch = sandbox.stub().rejects(new Error('Network error'));
 
-            const result = await perfettoManager.enableTracing();
-
-            expect(result.error).to.include('Error enabling Perfetto tracing');
-            expect(result.error).to.include('Network error');
+            try {
+                await perfettoManager.enableTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('Network error');
+            }
         });
     });
 
@@ -445,48 +455,30 @@ describe('PerfettoManager', () => {
         });
     });
 
-    describe('ecpGetPost', () => {
+    describe('ecpPost', () => {
         it('makes POST request with correct parameters', async () => {
             (global as any).fetch = sandbox.stub().resolves({
                 ok: true,
                 text: () => Promise.resolve('success')
             });
 
-            await (perfettoManager as any).ecpGetPost('/perfetto/enable/dev', '', 'post');
+            await (perfettoManager as any).ecpPost('/perfetto/enable/dev', '');
 
             expect((global as any).fetch.calledWith(
                 'http://192.168.1.100:8060/perfetto/enable/dev',
                 sinon.match({
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                })
-            )).to.be.true;
-        });
-
-        it('makes GET request with correct parameters', async () => {
-            (global as any).fetch = sandbox.stub().resolves({
-                ok: true,
-                text: () => Promise.resolve('success')
-            });
-
-            await (perfettoManager as any).ecpGetPost('/query/device-info', '', 'get');
-
-            expect((global as any).fetch.calledWith(
-                'http://192.168.1.100:8060/query/device-info',
-                sinon.match({
-                    method: 'GET',
-                    headers: { 'Content-Type': 'text/xml' }
+                    method: 'POST'
                 })
             )).to.be.true;
         });
 
         it('throws error when no host configured', async () => {
-            mockDebugSession.getPerfettoConfig.returns({
+            perfettoManager = new PerfettoManager({
                 enabled: true
             });
 
             try {
-                await (perfettoManager as any).ecpGetPost('/perfetto/enable/dev', '', 'post');
+                await (perfettoManager as any).ecpPost('/perfetto/enable/dev', '');
                 expect.fail('Should have thrown an error');
             } catch (error) {
                 expect((error as Error).message).to.include('No host configured');

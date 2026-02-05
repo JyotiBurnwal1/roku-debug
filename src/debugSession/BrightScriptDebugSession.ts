@@ -2701,7 +2701,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.error(e);
         }
         // stop perfetto tracing if it's running
-        this.perfettoManager.stopTracing();
+        this.perfettoManager?.stopTracing();
 
         //close the debugger connection
         try {
