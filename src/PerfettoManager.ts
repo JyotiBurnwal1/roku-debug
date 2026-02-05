@@ -154,7 +154,7 @@ export class PerfettoManager {
      */
     public async stopTracing(): Promise<void> {
         if (!this.isTracing) {
-            throw new Error('No active tracing session to stop');
+            return;
         }
 
         // Wait for write stream to finish before closing
@@ -309,5 +309,17 @@ export class PerfettoManager {
             },
             body: body
         });
+    }
+
+    /**
+     * Dispose of all resources. Safe to call multiple times.
+     * Closes all sockets, file handles, and timers.
+     */
+    public dispose(): void {
+        this.cleanup();
+
+        // Reset additional state not covered by cleanup()
+        this.isEnabled = false;
+        this.currentTraceFile = null;
     }
 }

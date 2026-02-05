@@ -637,19 +637,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
-     * Extract specific keys from the launch configuration
-     * @param keys - Array of keys to extract from launch configuration
-     * @returns Object containing only the specified keys and their values
-     */
-    public getPerfettoConfig(): Record<string, unknown> {
-        return {
-            host: this.launchConfiguration.host,
-            rootDir: this.launchConfiguration.rootDir,
-            ...this.launchConfiguration.profiling?.perfettoEvent || {}
-        };
-    }
-
-    /**
      * Activate rendezvous tracking (IF enabled in the LaunchConfig)
      */
     public async initRendezvousTracking() {
@@ -2701,7 +2688,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.error(e);
         }
         // stop perfetto tracing if it's running
-        this.perfettoManager?.stopTracing();
+        try {
+            await this.perfettoManager.stopTracing();
+        } catch (e) {
+            this.logger.error('Error stopping perfetto tracing', e);
+        }
+
+        try {
+            this.perfettoManager?.dispose?.();
+        } catch (e) {
+            this.logger.error('Error disposing perfetto manager', e);
+        }
 
         //close the debugger connection
         try {

@@ -147,14 +147,6 @@ describe('PerfettoManager', () => {
     });
 
     describe('stopTracing', () => {
-        it('throws error when no active tracing session', async () => {
-            try {
-                await perfettoManager.stopTracing();
-                expect.fail('Should have thrown an error');
-            } catch (error) {
-                expect((error as Error).message).to.equal('No active tracing session to stop');
-            }
-        });
 
         it('stops tracing successfully', async () => {
             (perfettoManager as any).isTracing = true;
