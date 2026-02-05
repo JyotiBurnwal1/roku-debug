@@ -25,13 +25,10 @@ export class PerfettoManager {
     private currentTraceFile: string | null = null;
     private isTracing = false;
     private isEnabled = false;
+    private config: PerfettoConfig;
 
-    /**
-     * Get the profiling configuration from the debug session
-     */
-    private getConfig(): PerfettoConfig {
-        const config = util?._debugSession?.getPerfettoConfig() || {};
-        return config as PerfettoConfig;
+    public constructor(config?: PerfettoConfig) {
+        this.config = config || {};
     }
 
     /**
@@ -73,14 +70,13 @@ export class PerfettoManager {
         }
 
         try {
-            const config = this.getConfig();
-            const cwd = config.rootDir;
-            const tracesDir = config.dir || pathModule.join(cwd, 'traces');
+            const cwd = this.config.rootDir;
+            const tracesDir = this.config.dir || pathModule.join(cwd, 'traces');
 
             // Ensure directory exists
             fsExtra.ensureDirSync(tracesDir);
 
-            let filename = this.getFilename(config, tracesDir);
+            let filename = this.getFilename(this.config, tracesDir);
 
             const fullPath = pathModule.join(tracesDir, filename);
             this.currentTraceFile = fullPath;
@@ -189,9 +185,8 @@ export class PerfettoManager {
      */
     public async enableTracing(): Promise<{ error?: string; message?: string }> {
         try {
-            const config = this.getConfig();
             console.log(
-                `Enabling Perfetto tracing on channel ${this.selectedChannel} at host ${config.host}`
+                `Enabling Perfetto tracing on channel ${this.selectedChannel} at host ${this.config.host}`
             );
             const response = await this.ecpGetPost(
                 `/perfetto/enable/${this.selectedChannel}`,
@@ -205,7 +200,7 @@ export class PerfettoManager {
                 };
             }
             this.isEnabled = true;
-            let successMessage = `Perfetto tracing enabled on channel ${this.selectedChannel}`;
+            let successMessage = `Perfetto tracing enabled on channel ${this.selectedChannel} at host ${this.config.host}`;
             return { message: successMessage };
         } catch (error) {
             return {
@@ -219,8 +214,7 @@ export class PerfettoManager {
      */
     private startWebSocketTracing(filename: string): Promise<void> {
         return new Promise((resolve, reject) => {
-            const config = this.getConfig();
-            const host = config.host;
+            const host = this.config.host;
             if (!host) {
                 reject(new Error('No host configured for Perfetto tracing'));
                 return;
@@ -300,6 +294,10 @@ export class PerfettoManager {
             this.ws = null;
         }
 
+        if (this.isEnabled) {
+            this.isEnabled = false;
+        }
+        
         if (this.writeStream) {
             this.writeStream.end();
             this.writeStream = null;
@@ -314,8 +312,7 @@ export class PerfettoManager {
         body: string,
         method: 'post' | 'get' = 'get'
     ): Promise<Response> {
-        const config = this.getConfig();
-        const host = config.host;
+        const host = this.config.host;
         if (!host) {
             throw new Error('No host configured for Perfetto tracing');
         }

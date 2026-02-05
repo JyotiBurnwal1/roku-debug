@@ -38,7 +38,8 @@ import {
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
     CustomRequestEvent,
-    ClientToServerCustomEventName
+    ClientToServerCustomEventName,
+    PerfettoTracingEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -47,8 +48,7 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
-import type { PerfettoManager } from '../PerfettoManager';
-import { PerfettoManager as PerfettoManagerClass } from '../PerfettoManager';
+import { PerfettoManager } from '../PerfettoManager';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
@@ -60,16 +60,9 @@ import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 import { AppState, rokuECP } from '../RokuECP';
 import { SocketConnectionInUseError } from '../Exceptions';
+import { PerfettoResult } from '../interfaces';
 
 const diagnosticSource = 'roku-debug';
-
-/**
- * Result type for Perfetto tracing operations
- */
-interface PerfettoResult {
-    error?: string;
-    message?: string;
-}
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -83,7 +76,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         util._debugSession = this;
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
-        this.perfettoManager = new PerfettoManagerClass();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
@@ -412,6 +404,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
+        // Initialize PerfettoManager
+        this.perfettoManager = new PerfettoManager({
+            host: this.launchConfiguration.host,
+            rootDir: this.launchConfiguration.rootDir,
+            ...this.launchConfiguration.profiling?.perfettoEvent
+        });
+
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -541,6 +540,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.publish();
 
+            await this.activatePerfettoManager()
+
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
                 this.sendEvent(new ChannelPublishedEvent(
@@ -597,7 +598,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         }
 
-        if (this.launchConfiguration.profiling?.perfettoEvent?.enable && !this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
+        logEnd();
+    }
+
+
+    private async activatePerfettoManager() {
+        if (this.launchConfiguration.profiling?.perfettoEvent?.enable ) {
             try {
                 const enableResult = await this.perfettoManager.enableTracing();
                 if (enableResult?.error) {
@@ -606,13 +612,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else {
                     this.logger.log('Perfetto tracing enabled');
                     this.sendEvent(new LogOutputEvent('Perfetto tracing enabled'));
+                    await this.startTracingBasedOnConfig();
                 }
             } catch (e) {
                 this.logger.error('Failed to enable perfetto tracing', e);
             }
         }
+    }
 
-        logEnd();
+    private async startTracingBasedOnConfig() {
+        if (this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
+            try {
+                const startResult = await this.perfettoManager.startTracing();
+                if (startResult?.error) {
+                    this.sendEvent(new PerfettoTracingEvent('error', startResult.error));
+                } else {
+                    this.sendEvent(new PerfettoTracingEvent('started', startResult.message));
+                }
+            } catch (e) {
+                this.sendEvent(new PerfettoTracingEvent('error', e?.message || String(e)));
+            }
+        }
     }
 
     /**
