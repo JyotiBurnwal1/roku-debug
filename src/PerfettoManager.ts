@@ -56,17 +56,14 @@ export class PerfettoManager {
     /**
      * Start Perfetto tracing
      */
-    public async startTracing(): Promise<{ error?: string; message?: string }> {
+    public async startTracing(): Promise<void> {
         if (this.isTracing) {
-            return { error: 'Tracing is already active' };
+            throw new Error('Tracing is already active');
         }
 
         // Auto-enable if not already enabled
         if (!this.isEnabled) {
-            const enableResult = await this.enableTracing();
-            if (enableResult.error) {
-                return enableResult;
-            }
+            await this.enableTracing();
         }
 
         try {
@@ -85,13 +82,9 @@ export class PerfettoManager {
             await this.startWebSocketTracing(fullPath);
 
             this.isTracing = true;
-            let successMessage = `Perfetto tracing started. Saving to ${fullPath}`;
-            return { message: successMessage };
         } catch (error) {
             this.cleanup();
-            return {
-                error: `Error starting Perfetto tracing: ${error instanceof Error ? error.message : String(error)}`
-            };
+            throw new Error(`Error starting Perfetto tracing: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
@@ -159,54 +152,43 @@ export class PerfettoManager {
     /**
      * Stop Perfetto tracing
      */
-    public stopTracing(): Promise<{ error?: string; message?: string }> {
+    public async stopTracing(): Promise<void> {
         if (!this.isTracing) {
-            return Promise.resolve({ error: 'No active tracing session to stop' });
+            throw new Error('No active tracing session to stop');
         }
 
-        try {
-            const tracePath = this.currentTraceFile;
+        // Wait for write stream to finish before closing
+        await new Promise<void>((resolve) => {
+            if (this.writeStream) {
+                this.writeStream.end(() => resolve());
+            } else {
+                resolve();
+            }
+        });
+        this.writeStream = null;
 
-            // Close WebSocket and cleanup
-            this.cleanup();
-
-            this.isTracing = false;
-            let successMessage = `Perfetto tracing stopped. Trace saved to ${tracePath}`;
-            return Promise.resolve({ message: successMessage });
-        } catch (error) {
-            return Promise.resolve({
-                error: `Error stopping Perfetto tracing: ${error instanceof Error ? error.message : String(error)}`
-            });
-        }
+        // Close WebSocket and cleanup
+        this.cleanupWebSocket();
+        this.isTracing = false;
     }
 
     /**
      * Enable tracing on the Roku device
      */
-    public async enableTracing(): Promise<{ error?: string; message?: string }> {
-        try {
-            console.log(
-                `Enabling Perfetto tracing on channel ${this.selectedChannel} at host ${this.config.host}`
-            );
-            const response = await this.ecpGetPost(
-                `/perfetto/enable/${this.selectedChannel}`,
-                '',
-                'post'
-            );
-            if (!response.ok) {
-                const responseText = await response.text().catch(() => '');
-                return {
-                    error: `Failed to enable tracing: ${response.status} ${response.statusText}. ${responseText}`
-                };
-            }
-            this.isEnabled = true;
-            let successMessage = `Perfetto tracing enabled on channel ${this.selectedChannel} at host ${this.config.host}`;
-            return { message: successMessage };
-        } catch (error) {
-            return {
-                error: `Error enabling Perfetto tracing: ${error instanceof Error ? error.message : String(error)}`
-            };
+    public async enableTracing(): Promise<void> {
+        console.log(
+            `Enabling Perfetto tracing on channel ${this.selectedChannel} at host ${this.config.host}`
+        );
+        const response = await this.ecpGetPost(
+            `/perfetto/enable/${this.selectedChannel}`,
+            '',
+            'post'
+        );
+        if (!response.ok) {
+            const responseText = await response.text().catch(() => '');
+            throw new Error(`Failed to enable tracing: ${response.status} ${response.statusText}. ${responseText}`);
         }
+        this.isEnabled = true;
     }
 
     /**
@@ -271,15 +253,15 @@ export class PerfettoManager {
                 console.log(
                     `Perfetto WebSocket closed. Code: ${code} Reason: ${reason.toString()}`
                 );
-                this.cleanup();
+                this.cleanupWebSocket();
             });
         });
     }
 
     /**
-     * Clean up resources
+     * Clean up WebSocket and timer resources
      */
-    private cleanup(): void {
+    private cleanupWebSocket(): void {
         if (this.pingTimer) {
             clearInterval(this.pingTimer);
             this.pingTimer = null;
@@ -293,15 +275,20 @@ export class PerfettoManager {
             }
             this.ws = null;
         }
+    }
 
-        if (this.isEnabled) {
-            this.isEnabled = false;
-        }
-        
+    /**
+     * Clean up all resources (used for error recovery)
+     */
+    private cleanup(): void {
+        this.cleanupWebSocket();
+
         if (this.writeStream) {
             this.writeStream.end();
             this.writeStream = null;
         }
+
+        this.isTracing = false;
     }
 
     /**
@@ -325,13 +312,6 @@ export class PerfettoManager {
                     'Content-Type': 'application/json'
                 },
                 body: body
-            });
-        } else {
-            return fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'text/xml'
-                }
             });
         }
     }

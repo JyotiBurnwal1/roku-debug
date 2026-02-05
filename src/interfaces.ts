@@ -40,11 +40,3 @@ export type PickMatching<T, V> =
 export type ExtractMethods<T> = PickMatching<T, Function>;
 
 export type MaybePromise<T> = T | Promise<T>;
-
-/**
- * Result type for Perfetto tracing operations
- */
-export interface PerfettoResult {
-    error?: string;
-    message?: string;
-}

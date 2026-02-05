@@ -60,7 +60,6 @@ import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 import { AppState, rokuECP } from '../RokuECP';
 import { SocketConnectionInUseError } from '../Exceptions';
-import { PerfettoResult } from '../interfaces';
 
 const diagnosticSource = 'roku-debug';
 
@@ -603,19 +602,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
 
     private async activatePerfettoManager() {
-        if (this.launchConfiguration.profiling?.perfettoEvent?.enable ) {
+        if (this.launchConfiguration.profiling?.perfettoEvent?.enable) {
             try {
-                const enableResult = await this.perfettoManager.enableTracing();
-                if (enableResult?.error) {
-                    this.logger.error('Failed to enable perfetto tracing', enableResult.error);
-                    this.sendEvent(new LogOutputEvent(`Failed to enable perfetto tracing: ${enableResult.error}`));
-                } else {
-                    this.logger.log('Perfetto tracing enabled');
-                    this.sendEvent(new LogOutputEvent('Perfetto tracing enabled'));
-                    await this.startTracingBasedOnConfig();
-                }
+                await this.perfettoManager.enableTracing();
+                this.logger.log('Perfetto tracing enabled');
+                this.sendEvent(new LogOutputEvent('Perfetto tracing enabled'));
+                await this.startTracingBasedOnConfig();
             } catch (e) {
                 this.logger.error('Failed to enable perfetto tracing', e);
+                this.sendEvent(new LogOutputEvent(`Failed to enable perfetto tracing: ${e.message}`));
             }
         }
     }
@@ -623,12 +618,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private async startTracingBasedOnConfig() {
         if (this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
             try {
-                const startResult = await this.perfettoManager.startTracing();
-                if (startResult?.error) {
-                    this.sendEvent(new PerfettoTracingEvent('error', startResult.error));
-                } else {
-                    this.sendEvent(new PerfettoTracingEvent('started', startResult.message));
-                }
+                await this.perfettoManager.startTracing();
+                this.sendEvent(new PerfettoTracingEvent('started'));
             } catch (e) {
                 this.sendEvent(new PerfettoTracingEvent('error', e?.message || String(e)));
             }
@@ -1073,14 +1064,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'startTracing') {
             try {
-                const result: PerfettoResult = await this.perfettoManager.startTracing();
-                if (result?.error) {
-                    response.success = false;
-                    response.body = { message: result.error };
-                } else {
-                    response.success = true;
-                    response.body = { message: result?.message };
-                }
+                await this.perfettoManager.startTracing();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
@@ -1088,39 +1072,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'stopTracing') {
             try {
-                const result: PerfettoResult = await this.perfettoManager.stopTracing();
-                if (result?.error) {
-                    response.success = false;
-                    response.body = { message: result.error };
-                } else {
-                    response.success = true;
-                    response.body = { message: result?.message };
-                }
+                this.perfettoManager.stopTracing();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
             }
 
-        } else if (command === 'autoStartTracing') {
-            try {
-                const enableResult: PerfettoResult = await this.perfettoManager.enableTracing();
-                if (enableResult?.error) {
-                    response.success = false;
-                    response.body = { message: enableResult.error };
-                } else {
-                    const startResult: PerfettoResult = await this.perfettoManager.startTracing();
-                    if (startResult?.error) {
-                        response.success = false;
-                        response.body = { message: startResult.error };
-                    } else {
-                        response.success = true;
-                        response.body = { message: startResult?.message };
-                    }
-                }
-            } catch (e) {
-                response.success = false;
-                response.body = { message: e?.message || String(e) };
-            }
         }
         this.sendResponse(response);
     }
