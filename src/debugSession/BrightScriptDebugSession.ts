@@ -539,7 +539,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.publish();
 
-            await this.activatePerfettoManager()
+            await this.activatePerfettoManager();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -621,7 +621,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.perfettoManager.startTracing();
                 this.sendEvent(new PerfettoTracingEvent('started'));
             } catch (e) {
-                this.sendEvent(new PerfettoTracingEvent('error', e?.message || String(e)));
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                this.sendEvent(new PerfettoTracingEvent('error', errorMessage));
             }
         }
     }
@@ -1059,7 +1060,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'stopTracing') {
             try {
-                this.perfettoManager.stopTracing();
+                await this.perfettoManager.stopTracing();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
