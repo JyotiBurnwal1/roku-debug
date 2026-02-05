@@ -410,6 +410,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             ...this.launchConfiguration.profiling?.perfettoEvent
         });
 
+        // Subscribe to PerfettoManager closed event
+        this.perfettoManager.on('closed', (data) => {
+            this.sendEvent(new PerfettoTracingEvent('closed', data.reason));
+        });
+
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });

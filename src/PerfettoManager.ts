@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as pathModule from 'path';
 import * as fsExtra from 'fs-extra';
 import { WebSocket } from 'ws';
-import { util } from './util';
+import { EventEmitter } from 'events';
 
 /**
  * Configuration interface for Perfetto tracing
@@ -26,9 +26,28 @@ export class PerfettoManager {
     private isTracing = false;
     private isEnabled = false;
     private config: PerfettoConfig;
+    private emitter: EventEmitter;
 
     public constructor(config?: PerfettoConfig) {
         this.config = config || {};
+        this.emitter = new EventEmitter();
+    }
+
+    /**
+     * Subscribe to PerfettoManager events
+     */
+    public on(eventName: 'closed', handler: (data: { code: number; reason: string }) => void): () => void;
+    public on(eventName: string, handler: (payload: any) => void): () => void {
+        this.emitter.on(eventName, handler);
+        return () => {
+            if (this.emitter !== undefined) {
+                this.emitter.removeListener(eventName, handler);
+            }
+        };
+    }
+
+    private emit(eventName: 'closed', data: { code: number; reason: string }): void {
+        this.emitter.emit(eventName, data);
     }
 
     /**
@@ -253,6 +272,12 @@ export class PerfettoManager {
                     `Perfetto WebSocket closed. Code: ${code} Reason: ${reason.toString()}`
                 );
                 this.cleanupWebSocket();
+
+                // Emit closed event for code 1005 (closed without close frame)
+                if (code === 1005) {
+                    this.isTracing = false;
+                    this.emit('closed', { code, reason: reason.toString() || 'WebSocket closed unexpectedly' });
+                }
             });
         });
     }
