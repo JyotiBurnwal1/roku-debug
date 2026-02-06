@@ -58,6 +58,7 @@ import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 import { AppState, rokuECP } from '../RokuECP';
 import { SocketConnectionInUseError } from '../Exceptions';
+import { HeapSnapshotManager } from '../HeapSnapshotManager';
 
 const diagnosticSource = 'roku-debug';
 
@@ -113,6 +114,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private idCounter = 1;
 
     public fileManager: FileManager;
+
+    public heapSnapshotManager: HeapSnapshotManager;
 
     public projectManager: ProjectManager;
 
@@ -522,6 +525,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             await this.publish();
+
+            this.heapSnapshotManager = new HeapSnapshotManager();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
