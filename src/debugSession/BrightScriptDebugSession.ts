@@ -998,7 +998,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Accepts custom events and requests from the extension
      * @param command name of the command to execute
      */
-    protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
+    protected async customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
 
@@ -1010,6 +1010,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'popupMessageEventResponse') {
             this.emit('popupMessageEventResponse', args);
+
+        } else if (command === 'captureSnapshot') {
+            void this.heapSnapshotManager.captureSnapshot();
+
+        } else if (command === 'stopCapturingSnapshot') {
+            void this.heapSnapshotManager.stopCapturingSnapshot();
         }
         this.sendResponse(response);
     }
