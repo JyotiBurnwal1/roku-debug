@@ -143,10 +143,10 @@ export function isChannelPublishedEvent(event: any): event is ChannelPublishedEv
 }
 
 /**
- * Emitted when Perfetto tracing status changes (started, stopped, error, closed)
+ * Emitted when Perfetto tracing status changes (started, stopped, error, closed, snapshotCaptured)
  */
-export class PerfettoTracingEvent extends CustomEvent<{ status: 'started' | 'stopped' | 'error' | 'closed'; message?: string }> {
-    constructor(status: 'started' | 'stopped' | 'error' | 'closed', message?: string) {
+export class PerfettoTracingEvent extends CustomEvent<{ status: 'started' | 'stopped' | 'error' | 'closed' | 'snapshotCaptured'; message?: string }> {
+    constructor(status: 'started' | 'stopped' | 'error' | 'closed' | 'snapshotCaptured', message?: string) {
         super({ status, message });
     }
 }

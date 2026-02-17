@@ -60,7 +60,6 @@ import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 import { AppState, rokuECP } from '../RokuECP';
 import { SocketConnectionInUseError } from '../Exceptions';
-import { HeapSnapshotManager } from '../HeapSnapshotManager';
 
 const diagnosticSource = 'roku-debug';
 
@@ -116,8 +115,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private idCounter = 1;
 
     public fileManager: FileManager;
-
-    public heapSnapshotManager: HeapSnapshotManager;
 
     public projectManager: ProjectManager;
 
@@ -418,6 +415,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.sendEvent(new PerfettoTracingEvent('closed', data.reason));
         });
 
+        // Subscribe to PerfettoManager snapshotCaptured event
+        this.perfettoManager.on('snapshotCaptured', () => {
+            this.sendEvent(new PerfettoTracingEvent('snapshotCaptured'));
+        });
+
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -547,7 +549,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.publish();
 
-            this.heapSnapshotManager = new HeapSnapshotManager();
             await this.activatePerfettoManager();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
@@ -1060,10 +1061,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.emit('popupMessageEventResponse', args);
 
         } else if (command === 'captureSnapshot') {
-            void this.heapSnapshotManager.captureSnapshot();
+            void this.perfettoManager.captureSnapshot();
 
-        } else if (command === 'stopCapturingSnapshot') {
-            void this.heapSnapshotManager.stopCapturingSnapshot();
         } else if (command === 'startTracing') {
             try {
                 await this.perfettoManager.startTracing();

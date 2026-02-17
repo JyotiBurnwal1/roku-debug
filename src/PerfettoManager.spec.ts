@@ -477,4 +477,109 @@ describe('PerfettoManager', () => {
             }
         });
     });
+
+    describe('captureSnapshot', () => {
+        it('throws error when tracing is not active', async () => {
+            (perfettoManager as any).isTracing = false;
+
+            try {
+                await perfettoManager.captureSnapshot();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('tracing must be active');
+            }
+        });
+
+        it('throws error when WebSocket is not connected', async () => {
+            (perfettoManager as any).isTracing = true;
+            (perfettoManager as any).ws = null;
+
+            try {
+                await perfettoManager.captureSnapshot();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('WebSocket must be connected');
+            }
+        });
+
+        it('throws error when WebSocket is not open', async () => {
+            (perfettoManager as any).isTracing = true;
+            mockWebSocket.readyState = 3; // WebSocket.CLOSED
+            (perfettoManager as any).ws = mockWebSocket;
+
+            try {
+                await perfettoManager.captureSnapshot();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('WebSocket must be connected');
+            }
+        });
+
+        it('captures snapshot successfully and emits event', async () => {
+            (perfettoManager as any).isTracing = true;
+            mockWebSocket.readyState = 1; // WebSocket.OPEN
+            (perfettoManager as any).ws = mockWebSocket;
+
+            (global as any).fetch = sandbox.stub().resolves({
+                ok: true,
+                text: () => Promise.resolve('')
+            });
+
+            const snapshotCapturedSpy = sandbox.spy();
+            perfettoManager.on('snapshotCaptured', snapshotCapturedSpy);
+
+            await perfettoManager.captureSnapshot();
+
+            expect((global as any).fetch.calledWith(
+                'http://192.168.1.100:8060/perfetto/heapgraph/trigger/dev',
+                sinon.match.object
+            )).to.be.true;
+            expect(snapshotCapturedSpy.calledOnce).to.be.true;
+        });
+
+        it('throws error when ECP request fails', async () => {
+            (perfettoManager as any).isTracing = true;
+            mockWebSocket.readyState = 1; // WebSocket.OPEN
+            (perfettoManager as any).ws = mockWebSocket;
+
+            (global as any).fetch = sandbox.stub().resolves({
+                ok: false,
+                status: 500,
+                statusText: 'Internal Server Error',
+                text: () => Promise.resolve('Server error')
+            });
+
+            try {
+                await perfettoManager.captureSnapshot();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('Failed to capture snapshot');
+                expect((error as Error).message).to.include('500');
+            }
+        });
+
+        it('does not emit event when ECP request fails', async () => {
+            (perfettoManager as any).isTracing = true;
+            mockWebSocket.readyState = 1; // WebSocket.OPEN
+            (perfettoManager as any).ws = mockWebSocket;
+
+            (global as any).fetch = sandbox.stub().resolves({
+                ok: false,
+                status: 404,
+                statusText: 'Not Found',
+                text: () => Promise.resolve('')
+            });
+
+            const snapshotCapturedSpy = sandbox.spy();
+            perfettoManager.on('snapshotCaptured', snapshotCapturedSpy);
+
+            try {
+                await perfettoManager.captureSnapshot();
+            } catch {
+                // expected
+            }
+
+            expect(snapshotCapturedSpy.called).to.be.false;
+        });
+    });
 });

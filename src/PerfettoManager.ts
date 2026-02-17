@@ -37,6 +37,7 @@ export class PerfettoManager {
      * Subscribe to PerfettoManager events
      */
     public on(eventName: 'closed', handler: (data: { code: number; reason: string }) => void): () => void;
+    public on(eventName: 'snapshotCaptured', handler: () => void): () => void;
     public on(eventName: string, handler: (payload: any) => void): () => void {
         this.emitter.on(eventName, handler);
         return () => {
@@ -46,7 +47,9 @@ export class PerfettoManager {
         };
     }
 
-    private emit(eventName: 'closed', data: { code: number; reason: string }): void {
+    private emit(eventName: 'closed', data: { code: number; reason: string }): void;
+    private emit(eventName: 'snapshotCaptured'): void;
+    private emit(eventName: string, data?: any): void {
         this.emitter.emit(eventName, data);
     }
 
@@ -346,5 +349,24 @@ export class PerfettoManager {
         // Reset additional state not covered by cleanup()
         this.isEnabled = false;
         this.currentTraceFile = null;
+    }
+
+    /**
+     * Capture a heap graph snapshot. Can only be called when tracing is active and WebSocket is connected.
+     */
+    public async captureSnapshot(): Promise<void> {
+        if (!this.isTracing || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            throw new Error('Cannot capture snapshot: tracing must be active.');
+        }
+
+        const response = await this.ecpPost(
+            `/perfetto/heapgraph/trigger/${this.selectedChannel}`,
+            ''
+        );
+        if (!response.ok) {
+            const responseText = await response.text().catch(() => '');
+            throw new Error(`Failed to capture snapshot: ${response.status} ${response.statusText}. ${responseText}`);
+        }
+        this.emit('snapshotCaptured');
     }
 }
