@@ -38,7 +38,8 @@ import {
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
     CustomRequestEvent,
-    ClientToServerCustomEventName
+    ClientToServerCustomEventName,
+    PerfettoTracingEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -47,6 +48,7 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
+import { PerfettoManager } from '../PerfettoManager';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
@@ -144,6 +146,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variables: Record<number, AugmentedVariable> = {};
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
+
+    private perfettoManager: PerfettoManager;
 
     private rendezvousTracker: RendezvousTracker;
 
@@ -363,6 +367,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
+        if (config.profiling?.perfettoEvent?.enable) {
+            config.profiling.perfettoEvent.dir ??= s`${config.cwd}/traces/`;
+            // eslint-disable-next-line no-template-curly-in-string
+            config.profiling.perfettoEvent.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+        }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
         if (typeof config.enableVariablesPanel !== 'boolean') {
@@ -396,6 +405,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (e) {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
+
+        // Initialize PerfettoManager
+        this.perfettoManager = new PerfettoManager({
+            host: this.launchConfiguration.host,
+            rootDir: this.launchConfiguration.rootDir,
+            ...this.launchConfiguration.profiling?.perfettoEvent
+        });
+
+        // Subscribe to PerfettoManager closed event
+        this.perfettoManager.on('closed', (data) => {
+            this.sendEvent(new PerfettoTracingEvent('closed', data.reason));
+        });
 
         // fetches the device info and parses the xml data to JSON object
         try {
@@ -527,6 +548,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.publish();
 
             this.heapSnapshotManager = new HeapSnapshotManager();
+            await this.activatePerfettoManager();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -585,6 +607,33 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         logEnd();
+    }
+
+
+    private async activatePerfettoManager() {
+        if (this.launchConfiguration.profiling?.perfettoEvent?.enable) {
+            try {
+                await this.perfettoManager.enableTracing();
+                this.logger.log('Perfetto tracing enabled');
+                this.sendEvent(new LogOutputEvent('Perfetto tracing enabled'));
+                await this.startTracingBasedOnConfig();
+            } catch (e) {
+                this.logger.error('Failed to enable perfetto tracing', e);
+                this.sendEvent(new LogOutputEvent(`Failed to enable perfetto tracing: ${e.message}`));
+            }
+        }
+    }
+
+    private async startTracingBasedOnConfig() {
+        if (this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
+            try {
+                await this.perfettoManager.startTracing();
+                this.sendEvent(new PerfettoTracingEvent('started'));
+            } catch (e) {
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                this.sendEvent(new PerfettoTracingEvent('error', errorMessage));
+            }
+        }
     }
 
     /**
@@ -1001,7 +1050,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected async customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
-
         } else if (command === 'chanperf.clearHistory') {
             this.rokuAdapter.clearChanperfHistory();
 
@@ -1016,6 +1064,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'stopCapturingSnapshot') {
             void this.heapSnapshotManager.stopCapturingSnapshot();
+        } else if (command === 'startTracing') {
+            try {
+                await this.perfettoManager.startTracing();
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
+
+        } else if (command === 'stopTracing') {
+            try {
+                await this.perfettoManager.stopTracing();
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
+
         }
         this.sendResponse(response);
     }
@@ -2637,6 +2701,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         } catch (e) {
             this.logger.error(e);
+        }
+        // stop perfetto tracing if it's running
+        try {
+            await this.perfettoManager.stopTracing();
+        } catch (e) {
+            this.logger.error('Error stopping perfetto tracing', e);
+        }
+
+        try {
+            this.perfettoManager?.dispose?.();
+        } catch (e) {
+            this.logger.error('Error disposing perfetto manager', e);
         }
 
         //close the debugger connection

@@ -143,6 +143,22 @@ export function isChannelPublishedEvent(event: any): event is ChannelPublishedEv
 }
 
 /**
+ * Emitted when Perfetto tracing status changes (started, stopped, error, closed)
+ */
+export class PerfettoTracingEvent extends CustomEvent<{ status: 'started' | 'stopped' | 'error' | 'closed'; message?: string }> {
+    constructor(status: 'started' | 'stopped' | 'error' | 'closed', message?: string) {
+        super({ status, message });
+    }
+}
+
+/**
+ * Is the object a `PerfettoTracingEvent`
+ */
+export function isPerfettoTracingEvent(event: any): event is PerfettoTracingEvent {
+    return !!event && event.event === PerfettoTracingEvent.name;
+}
+
+/**
  * Event that asks the client to execute a command.
  */
 export class CustomRequestEvent<T = any, R = T & { name: string; requestId: number }> extends CustomEvent<R> {
