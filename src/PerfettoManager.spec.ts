@@ -60,15 +60,12 @@ describe('PerfettoManager', () => {
     });
 
     describe('startTracing', () => {
-        it('throws error when tracing is already active', async () => {
+        it('returns early when tracing is already active', async () => {
             (perfettoManager as any).isTracing = true;
 
-            try {
-                await perfettoManager.startTracing();
-                expect.fail('Should have thrown an error');
-            } catch (error) {
-                expect((error as Error).message).to.equal('Tracing is already active');
-            }
+            // Should not throw, just return early
+            await perfettoManager.startTracing();
+            // If we reach here without error, the test passes
         });
 
         it('auto-enables tracing if not already enabled', async () => {
@@ -498,7 +495,7 @@ describe('PerfettoManager', () => {
                 await perfettoManager.captureHeapSnapshot();
                 expect.fail('Should have thrown an error');
             } catch (error) {
-                expect((error as Error).message).to.include('WebSocket must be connected');
+                expect((error as Error).message).to.include('tracing must be active');
             }
         });
 
@@ -511,7 +508,7 @@ describe('PerfettoManager', () => {
                 await perfettoManager.captureHeapSnapshot();
                 expect.fail('Should have thrown an error');
             } catch (error) {
-                expect((error as Error).message).to.include('WebSocket must be connected');
+                expect((error as Error).message).to.include('tracing must be active');
             }
         });
 

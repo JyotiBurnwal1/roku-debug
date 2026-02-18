@@ -407,6 +407,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.perfettoManager = new PerfettoManager({
             host: this.launchConfiguration.host,
             rootDir: this.launchConfiguration.rootDir,
+            remotePort: this.launchConfiguration.remotePort,
             ...this.launchConfiguration.profiling?.perfettoEvent
         });
 
@@ -1062,7 +1063,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } else if (command === 'captureHeapSnapshot') {
             void this.perfettoManager.captureHeapSnapshot();
 
-        } else if (command === 'startTracing') {
+        } else if (command === 'startPerfettoTracing') {
             try {
                 await this.perfettoManager.startTracing();
             } catch (e) {
@@ -1070,7 +1071,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 response.body = { message: e?.message || String(e) };
             }
 
-        } else if (command === 'stopTracing') {
+        } else if (command === 'stopPerfettoTracing') {
             try {
                 await this.perfettoManager.stopTracing();
             } catch (e) {

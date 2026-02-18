@@ -3,11 +3,6 @@
     "version": "0.22.5",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
-    "overrides": {
-        "@types/glob": {
-            "@types/minimatch": "^5.1.2"
-        }
-    },
     "scripts": {
         "build": "rimraf dist && tsc",
         "preversion": "npm run build && npm run lint && npm run test",

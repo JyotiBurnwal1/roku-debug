@@ -14,15 +14,15 @@ interface PerfettoConfig {
     dir?: string;
     filename?: string;
     rootDir?: string;
+    remotePort?: number;
 }
 
 export class PerfettoManager {
-    private port = 8060;
+    private port: number;
     private selectedChannel = 'dev';
     private ws: WebSocket | null = null;
     private writeStream: fs.WriteStream | null = null;
     private pingTimer: NodeJS.Timeout | null = null;
-    private currentTraceFile: string | null = null;
     private isTracing = false;
     private isEnabled = false;
     private config: PerfettoConfig;
@@ -30,6 +30,7 @@ export class PerfettoManager {
 
     public constructor(config?: PerfettoConfig) {
         this.config = config || {};
+        this.port = this.config.remotePort ?? 8060;
         // Set default traces directory if not provided
         if (!this.config.dir) {
             this.config.dir = pathModule.join(this.config.rootDir || '', 'traces');
@@ -99,7 +100,6 @@ export class PerfettoManager {
             let filename = this.getFilename(this.config, this.config.dir);
 
             const fullPath = pathModule.join(this.config.dir, filename);
-            this.currentTraceFile = fullPath;
 
             // Start WebSocket connection to receive trace data
             await this.startWebSocketTracing(fullPath);
@@ -349,7 +349,6 @@ export class PerfettoManager {
 
         // Reset additional state not covered by cleanup()
         this.isEnabled = false;
-        this.currentTraceFile = null;
     }
 
     /**
