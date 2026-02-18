@@ -3,6 +3,11 @@
     "version": "0.22.5",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
+    "overrides": {
+        "@types/glob": {
+            "@types/minimatch": "^5.1.2"
+        }
+    },
     "scripts": {
         "build": "rimraf dist && tsc",
         "preversion": "npm run build && npm run lint && npm run test",
@@ -62,6 +67,7 @@
         "branches": 100
     },
     "devDependencies": {
+        "@sinonjs/fake-timers": "^15.1.0",
         "@types/chai": "^4.2.22",
         "@types/dateformat": "~3",
         "@types/debounce": "^1.2.1",

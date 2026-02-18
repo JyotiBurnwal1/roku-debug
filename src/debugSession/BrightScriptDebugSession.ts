@@ -415,9 +415,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.sendEvent(new PerfettoTracingEvent('closed', data.reason));
         });
 
-        // Subscribe to PerfettoManager snapshotCaptured event
-        this.perfettoManager.on('snapshotCaptured', () => {
-            this.sendEvent(new PerfettoTracingEvent('snapshotCaptured'));
+        // Subscribe to PerfettoManager heapSnapshotCaptured event
+        this.perfettoManager.on('heapSnapshotCaptured', () => {
+            this.sendEvent(new PerfettoTracingEvent('heapSnapshotCaptured'));
         });
 
         // fetches the device info and parses the xml data to JSON object
@@ -615,12 +615,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (this.launchConfiguration.profiling?.perfettoEvent?.enable) {
             try {
                 await this.perfettoManager.enableTracing();
-                this.logger.log('Perfetto tracing enabled');
-                this.sendEvent(new LogOutputEvent('Perfetto tracing enabled'));
                 await this.startTracingBasedOnConfig();
             } catch (e) {
                 this.logger.error('Failed to enable perfetto tracing', e);
-                this.sendEvent(new LogOutputEvent(`Failed to enable perfetto tracing: ${e.message}`));
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                this.sendEvent(new PerfettoTracingEvent('enableError', errorMessage));
             }
         }
     }
@@ -1060,8 +1059,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } else if (command === 'popupMessageEventResponse') {
             this.emit('popupMessageEventResponse', args);
 
-        } else if (command === 'captureSnapshot') {
-            void this.perfettoManager.captureSnapshot();
+        } else if (command === 'captureHeapSnapshot') {
+            void this.perfettoManager.captureHeapSnapshot();
 
         } else if (command === 'startTracing') {
             try {

@@ -478,12 +478,12 @@ describe('PerfettoManager', () => {
         });
     });
 
-    describe('captureSnapshot', () => {
+    describe('captureHeapSnapshot', () => {
         it('throws error when tracing is not active', async () => {
             (perfettoManager as any).isTracing = false;
 
             try {
-                await perfettoManager.captureSnapshot();
+                await perfettoManager.captureHeapSnapshot();
                 expect.fail('Should have thrown an error');
             } catch (error) {
                 expect((error as Error).message).to.include('tracing must be active');
@@ -495,7 +495,7 @@ describe('PerfettoManager', () => {
             (perfettoManager as any).ws = null;
 
             try {
-                await perfettoManager.captureSnapshot();
+                await perfettoManager.captureHeapSnapshot();
                 expect.fail('Should have thrown an error');
             } catch (error) {
                 expect((error as Error).message).to.include('WebSocket must be connected');
@@ -508,7 +508,7 @@ describe('PerfettoManager', () => {
             (perfettoManager as any).ws = mockWebSocket;
 
             try {
-                await perfettoManager.captureSnapshot();
+                await perfettoManager.captureHeapSnapshot();
                 expect.fail('Should have thrown an error');
             } catch (error) {
                 expect((error as Error).message).to.include('WebSocket must be connected');
@@ -525,16 +525,16 @@ describe('PerfettoManager', () => {
                 text: () => Promise.resolve('')
             });
 
-            const snapshotCapturedSpy = sandbox.spy();
-            perfettoManager.on('snapshotCaptured', snapshotCapturedSpy);
+            const heapSnapshotCapturedSpy = sandbox.spy();
+            perfettoManager.on('heapSnapshotCaptured', heapSnapshotCapturedSpy);
 
-            await perfettoManager.captureSnapshot();
+            await perfettoManager.captureHeapSnapshot();
 
             expect((global as any).fetch.calledWith(
                 'http://192.168.1.100:8060/perfetto/heapgraph/trigger/dev',
                 sinon.match.object
             )).to.be.true;
-            expect(snapshotCapturedSpy.calledOnce).to.be.true;
+            expect(heapSnapshotCapturedSpy.calledOnce).to.be.true;
         });
 
         it('throws error when ECP request fails', async () => {
@@ -550,7 +550,7 @@ describe('PerfettoManager', () => {
             });
 
             try {
-                await perfettoManager.captureSnapshot();
+                await perfettoManager.captureHeapSnapshot();
                 expect.fail('Should have thrown an error');
             } catch (error) {
                 expect((error as Error).message).to.include('Failed to capture snapshot');
@@ -570,16 +570,16 @@ describe('PerfettoManager', () => {
                 text: () => Promise.resolve('')
             });
 
-            const snapshotCapturedSpy = sandbox.spy();
-            perfettoManager.on('snapshotCaptured', snapshotCapturedSpy);
+            const heapSnapshotCapturedSpy = sandbox.spy();
+            perfettoManager.on('heapSnapshotCaptured', heapSnapshotCapturedSpy);
 
             try {
-                await perfettoManager.captureSnapshot();
+                await perfettoManager.captureHeapSnapshot();
             } catch {
                 // expected
             }
 
-            expect(snapshotCapturedSpy.called).to.be.false;
+            expect(heapSnapshotCapturedSpy.called).to.be.false;
         });
     });
 });

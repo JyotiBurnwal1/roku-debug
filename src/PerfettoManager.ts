@@ -30,6 +30,10 @@ export class PerfettoManager {
 
     public constructor(config?: PerfettoConfig) {
         this.config = config || {};
+        // Set default traces directory if not provided
+        if (!this.config.dir) {
+            this.config.dir = pathModule.join(this.config.rootDir || '', 'traces');
+        }
         this.emitter = new EventEmitter();
     }
 
@@ -37,7 +41,7 @@ export class PerfettoManager {
      * Subscribe to PerfettoManager events
      */
     public on(eventName: 'closed', handler: (data: { code: number; reason: string }) => void): () => void;
-    public on(eventName: 'snapshotCaptured', handler: () => void): () => void;
+    public on(eventName: 'heapSnapshotCaptured', handler: () => void): () => void;
     public on(eventName: string, handler: (payload: any) => void): () => void {
         this.emitter.on(eventName, handler);
         return () => {
@@ -48,7 +52,7 @@ export class PerfettoManager {
     }
 
     private emit(eventName: 'closed', data: { code: number; reason: string }): void;
-    private emit(eventName: 'snapshotCaptured'): void;
+    private emit(eventName: 'heapSnapshotCaptured'): void;
     private emit(eventName: string, data?: any): void {
         this.emitter.emit(eventName, data);
     }
@@ -80,7 +84,7 @@ export class PerfettoManager {
      */
     public async startTracing(): Promise<void> {
         if (this.isTracing) {
-            throw new Error('Tracing is already active');
+            return;
         }
 
         // Auto-enable if not already enabled
@@ -89,15 +93,12 @@ export class PerfettoManager {
         }
 
         try {
-            const cwd = this.config.rootDir;
-            const tracesDir = this.config.dir || pathModule.join(cwd, 'traces');
-
             // Ensure directory exists
-            fsExtra.ensureDirSync(tracesDir);
+            fsExtra.ensureDirSync(this.config.dir);
 
-            let filename = this.getFilename(this.config, tracesDir);
+            let filename = this.getFilename(this.config, this.config.dir);
 
-            const fullPath = pathModule.join(tracesDir, filename);
+            const fullPath = pathModule.join(this.config.dir, filename);
             this.currentTraceFile = fullPath;
 
             // Start WebSocket connection to receive trace data
@@ -354,7 +355,7 @@ export class PerfettoManager {
     /**
      * Capture a heap graph snapshot. Can only be called when tracing is active and WebSocket is connected.
      */
-    public async captureSnapshot(): Promise<void> {
+    public async captureHeapSnapshot(): Promise<void> {
         if (!this.isTracing || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
             throw new Error('Cannot capture snapshot: tracing must be active.');
         }
@@ -367,6 +368,6 @@ export class PerfettoManager {
             const responseText = await response.text().catch(() => '');
             throw new Error(`Failed to capture snapshot: ${response.status} ${response.statusText}. ${responseText}`);
         }
-        this.emit('snapshotCaptured');
+        this.emit('heapSnapshotCaptured');
     }
 }
