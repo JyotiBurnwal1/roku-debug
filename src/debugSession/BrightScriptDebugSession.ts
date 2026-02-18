@@ -186,7 +186,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.initRequestArgs = args;
         this.logger.log('initializeRequest');
 
-        response.body = response.body || {};
+        response.body ||= {};
 
         // This debug adapter implements the configurationDoneRequest.
         response.body.supportsConfigurationDoneRequest = true;
