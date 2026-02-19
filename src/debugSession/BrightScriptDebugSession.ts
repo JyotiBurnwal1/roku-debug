@@ -364,10 +364,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
-        if (config.profiling?.perfettoEvent?.enable) {
-            config.profiling.perfettoEvent.dir ??= s`${config.cwd}/traces/`;
+        if (config.profiling?.tracing?.enable) {
+            config.profiling.tracing.dir ??= s`${config.cwd}/traces/`;
             // eslint-disable-next-line no-template-curly-in-string
-            config.profiling.perfettoEvent.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+            config.profiling.tracing.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
         }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
@@ -408,7 +408,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             host: this.launchConfiguration.host,
             rootDir: this.launchConfiguration.rootDir,
             remotePort: this.launchConfiguration.remotePort,
-            ...this.launchConfiguration.profiling?.perfettoEvent
+            ...this.launchConfiguration.profiling?.tracing
         });
 
         // Subscribe to PerfettoManager closed event
@@ -613,7 +613,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
 
     private async activatePerfettoManager() {
-        if (this.launchConfiguration.profiling?.perfettoEvent?.enable) {
+        if (this.launchConfiguration.profiling?.tracing?.enable) {
             try {
                 await this.perfettoManager.enableTracing();
                 await this.startTracingBasedOnConfig();
@@ -626,7 +626,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async startTracingBasedOnConfig() {
-        if (this.launchConfiguration.profiling?.perfettoEvent?.connectOnStart) {
+        if (this.launchConfiguration.profiling?.tracing?.connectOnStart) {
             try {
                 await this.perfettoManager.startTracing();
                 this.sendEvent(new PerfettoTracingEvent('started'));

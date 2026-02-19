@@ -219,7 +219,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Configuration for profiling functionality
      */
     profiling?: {
-        perfettoEvent?: {
+        tracing?: {
             /**
              * Whether perfetto event profiling is enabled
              */
