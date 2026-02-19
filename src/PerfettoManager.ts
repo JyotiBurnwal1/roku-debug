@@ -15,11 +15,13 @@ interface PerfettoConfig {
     filename?: string;
     rootDir?: string;
     remotePort?: number;
+    /** Channel ID to trace. Defaults to 'dev'. */
+    channelId?: string;
 }
 
 export class PerfettoManager {
     private port: number;
-    private selectedChannel = 'dev';
+    private channelId: string;
     private ws: WebSocket | null = null;
     private writeStream: fs.WriteStream | null = null;
     private pingTimer: NodeJS.Timeout | null = null;
@@ -31,6 +33,7 @@ export class PerfettoManager {
     public constructor(config?: PerfettoConfig) {
         this.config = config || {};
         this.port = this.config.remotePort ?? 8060;
+        this.channelId = this.config.channelId ?? 'dev';
         // Set default traces directory if not provided
         if (!this.config.dir) {
             this.config.dir = pathModule.join(this.config.rootDir || '', 'traces');
@@ -200,10 +203,10 @@ export class PerfettoManager {
      */
     public async enableTracing(): Promise<void> {
         console.log(
-            `Enabling Perfetto tracing on channel ${this.selectedChannel} at host ${this.config.host}`
+            `Enabling Perfetto tracing on channel ${this.channelId} at host ${this.config.host}`
         );
         const response = await this.ecpPost(
-            `/perfetto/enable/${this.selectedChannel}`,
+            `/perfetto/enable/${this.channelId}`,
             ''
         );
         if (!response.ok) {
@@ -360,7 +363,7 @@ export class PerfettoManager {
         }
 
         const response = await this.ecpPost(
-            `/perfetto/heapgraph/trigger/${this.selectedChannel}`,
+            `/perfetto/heapgraph/trigger/${this.channelId}`,
             ''
         );
         if (!response.ok) {
