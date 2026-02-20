@@ -343,9 +343,13 @@ describe('PerfettoManager', () => {
         });
 
         it('handles sequence with appTitle', () => { // eslint-disable-line no-template-curly-in-string
+            const rootDir = pathModule.join('/workspace', 'project');
+            const manifestPath = pathModule.join(rootDir, 'manifest');
+            const tracesDir = pathModule.join('/tmp', 'traces');
+
             const existsStub = sandbox.stub(fs, 'existsSync');
-            existsStub.withArgs('/workspace/project/manifest').returns(true);
-            existsStub.withArgs('/tmp/traces').returns(true);
+            existsStub.withArgs(manifestPath).returns(true);
+            existsStub.withArgs(tracesDir).returns(true);
             sandbox.stub(fs, 'readFileSync').returns('title=MyApp\nversion=1.0.0');
             sandbox.stub(fs, 'readdirSync').returns([
                 'MyApp_1.perfetto-trace',
@@ -354,10 +358,10 @@ describe('PerfettoManager', () => {
 
             const config = {
                 filename: '${appTitle}_${sequence}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
-                rootDir: '/workspace/project'
+                rootDir: rootDir
             };
 
-            const filename = (perfettoManager as any).getFilename(config, '/tmp/traces');
+            const filename = (perfettoManager as any).getFilename(config, tracesDir);
 
             expect(filename).to.equal('MyApp_3.perfetto-trace');
         });
