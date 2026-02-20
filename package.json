@@ -8,7 +8,7 @@
         "preversion": "npm run build && npm run lint && npm run test",
         "lint": "eslint \"src/**\"",
         "watch": "tsc --watch",
-        "test": "nyc mocha \"src/**/*spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
+        "test": "nyc mocha \"src/**/*spec.ts\" --exclude \"src/**/*.device.spec.ts\" --exit",
         "device-test": "mocha --spec \"src/**/*.device.spec.ts\"",
         "test:nocover": "mocha \"src/**/*.spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
         "publish-coverage": "nyc report --reporter=text-lcov | coveralls",

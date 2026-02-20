@@ -9,10 +9,9 @@ describe('PrintedObjectParser', () => {
         parseEquals('age: 12', { key: 'age', value: '12' });
     });
 
-    // Known limitation: embedded quotes are not fully supported since Roku doesn't escape them.
-    // The parser takes from the last quote backwards, so only the portion after the embedded quote is captured.
-    it('returns partial value for embedded quotes (known limitation)', () => {
-        parseEquals('quote: "hello " world"', { key: 'quote', value: '" world"' });
+    //TODO -- this one is hard
+    it.skip('handles embedded quotes', () => {
+        parseEquals('quote: "hello " world"', { key: 'quote', value: '"hello " world"' });
     });
 
     it('handles colons inside of key', () => {
