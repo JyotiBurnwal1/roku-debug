@@ -10,7 +10,7 @@ describe(DebugProtocolClientReplaySession.name, () => {
         await session.destroy();
     });
 
-    it('handles empty buffer log', async function test() {
+    it('handles empty buffer log', async () => {
         session = new DebugProtocolClientReplaySession({
             bufferLog: ''
         });
