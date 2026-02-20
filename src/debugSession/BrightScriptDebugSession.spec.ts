@@ -753,36 +753,60 @@ describe('BrightScriptDebugSession', () => {
             });
         });
 
-        it.skip('allows retrieval of children', async () => {
-            let expression = 'someObject';
-            getVariableValue = <EvaluateContainer>{
-                name: expression,
-                evaluateName: expression,
-                type: 'roAssociativeArray',
-                value: 'roAssociativeArray',
-                highLevelType: HighLevelType.object,
-                //shouldn't actually process the children
-                children: [getBooleanEvaluateContainer('someObject.isAlive', 'isAlive'), getBooleanEvaluateContainer('someObject.ownsHouse', 'ownsHouse')]
-            };
-            //adapter has to be at prompt for evaluates to work
+        it('allows retrieval of children', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            sinon.stub(session['rokuAdapter'], 'isTelnetAdapter').callsFake(() => true);
+            sinon.stub(session['rokuAdapter'], 'isDebugProtocolAdapter').callsFake(() => false);
+            sinon.stub(rokuAdapter, 'isScrapableContainObject').returns(true);
             rokuAdapter.isAtDebuggerPrompt = true;
-            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
-            /*let response = <DebugProtocol.EvaluateResponse>*/
-            await getResponse(0);
 
-            //get variables
-            void session.variablesRequest(<any>{}, { variablesReference: 1 });
-            let childVars = await getResponse<DebugProtocol.VariablesResponse>(1);
-            assert.deepEqual(childVars.body.variables, [
+            // Directly populate the variables storage with an object that has children
+            session['variables'][1] = {
+                name: 'someObject',
+                value: 'roAssociativeArray',
+                variablesReference: 1,
+                evaluateName: 'someObject',
+                childVariables: [
+                    {
+                        name: 'isAlive',
+                        value: 'true',
+                        variablesReference: 0,
+                        evaluateName: 'someObject.isAlive'
+                    },
+                    {
+                        name: 'ownsHouse',
+                        value: 'true',
+                        variablesReference: 0,
+                        evaluateName: 'someObject.ownsHouse'
+                    }
+                ]
+            };
+
+            let response: DebugProtocol.VariablesResponse = {
+                body: { variables: [] },
+                request_seq: 0,
+                success: false,
+                command: '',
+                seq: 0,
+                type: ''
+            };
+
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+
+            expect(response.body.variables).to.deep.equal([
                 {
                     name: 'isAlive',
                     value: 'true',
-                    variablesReference: 2,
+                    variablesReference: 0,
                     evaluateName: 'someObject.isAlive'
-                }, {
+                },
+                {
                     name: 'ownsHouse',
                     value: 'true',
-                    variablesReference: 3,
+                    variablesReference: 0,
                     evaluateName: 'someObject.ownsHouse'
                 }
             ]);

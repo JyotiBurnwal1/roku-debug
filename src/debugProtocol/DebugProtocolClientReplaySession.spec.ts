@@ -10,16 +10,13 @@ describe(DebugProtocolClientReplaySession.name, () => {
         await session.destroy();
     });
 
-    it.skip('debug this debugger.log file', async function test() {
-        this.timeout(10000000000);
-        const logPath = 'C:/users/bronley/downloads/2023-06-01T12∶21∶04-debugger.log';
+    it('handles empty buffer log', async function test() {
         session = new DebugProtocolClientReplaySession({
-            bufferLog: fsExtra.readFileSync(logPath).toString()
+            bufferLog: ''
         });
 
         await session.run();
         expectClientReplayResult([], session.result);
-        console.log(session);
     });
 });
 
