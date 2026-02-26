@@ -1,15 +1,18 @@
 /* eslint-disable no-template-curly-in-string */
 import * as fs from 'fs';
-import * as pathModule from 'path';
 import * as fsExtra from 'fs-extra';
 import { WebSocket } from 'ws';
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'eventemitter3';
+import type { ProfileType } from './debugSession/Events';
+import { standardizePath as s } from 'brighterscript';
+import { createLogger } from './logging';
+import { rokuECP } from './RokuECP';
 
 /**
  * Configuration interface for Perfetto tracing
  */
 interface PerfettoConfig {
-    host?: string;
+    host: string;
     enabled?: boolean;
     dir?: string;
     filename?: string;
@@ -20,32 +23,44 @@ interface PerfettoConfig {
 }
 
 export class PerfettoManager {
-    private port: number;
-    private channelId: string;
-    private ws: WebSocket | null = null;
-    private writeStream: fs.WriteStream | null = null;
-    private pingTimer: NodeJS.Timeout | null = null;
-    private isTracing = false;
-    private isEnabled = false;
-    private config: PerfettoConfig;
-    private emitter: EventEmitter;
 
     public constructor(config?: PerfettoConfig) {
-        this.config = config || {};
-        this.port = this.config.remotePort ?? 8060;
-        this.channelId = this.config.channelId ?? 'dev';
+        this.config = config ?? {} as any;
+        this.config.remotePort ??= 8060;
+        this.config.channelId ??= 'dev';
         // Set default traces directory if not provided
-        if (!this.config.dir) {
-            this.config.dir = pathModule.join(this.config.rootDir || '', 'traces');
-        }
-        this.emitter = new EventEmitter();
+        this.config.dir ??= s`${this.config.rootDir}/profiling`;
+    }
+
+    private config: PerfettoConfig;
+
+    private socket: WebSocket | null = null;
+    private writeStream: fs.WriteStream | null = null;
+    private pingTimer: NodeJS.Timeout | null = null;
+    private emitter = new EventEmitter();
+
+    /**
+     * When tracing is active, this is the file we're currently writing to. Cleaned up whenever tracing stops or errors.
+     */
+    private filePath?: string;
+
+    private logger = createLogger('PerfettoManager');
+
+    /**
+     * Are we actively tracing right now
+     */
+    private get isTracing() {
+        //if we have a socket, we're tracing
+        return !!this.socket && this.socket.readyState === WebSocket.OPEN;
     }
 
     /**
      * Subscribe to PerfettoManager events
      */
-    public on(eventName: 'closed', handler: (data: { code: number; reason: string }) => void): () => void;
-    public on(eventName: 'heapSnapshotCaptured', handler: () => void): () => void;
+    public on(eventName: 'enable', handler: (data: { types: ProfileType[] }) => void): () => void;
+    public on(eventName: 'start', handler: (data: { type: ProfileType }) => void): () => void;
+    public on(eventName: 'stop', handler: (data: { type: ProfileType; result?: string }) => void): () => void;
+    public on(eventName: 'error', handler: (data: { type: ProfileType; error: { message: string; stack?: string } }) => void): () => void;
     public on(eventName: string, handler: (payload: any) => void): () => void {
         this.emitter.on(eventName, handler);
         return () => {
@@ -55,8 +70,10 @@ export class PerfettoManager {
         };
     }
 
-    private emit(eventName: 'closed', data: { code: number; reason: string }): void;
-    private emit(eventName: 'heapSnapshotCaptured'): void;
+    private emit(eventName: 'enable', data: { types: ProfileType[] }): void;
+    private emit(eventName: 'start', data: { type: ProfileType }): void;
+    private emit(eventName: 'stop', data: { type: ProfileType; result?: string }): void;
+    private emit(eventName: 'error', data: { error: { message: string; stack?: string } }): void;
     private emit(eventName: string, data?: any): void {
         this.emitter.emit(eventName, data);
     }
@@ -67,7 +84,7 @@ export class PerfettoManager {
     private getAppTitle(cwd: string): string {
         if (cwd) {
             try {
-                const manifestPath = pathModule.join(cwd, 'manifest');
+                const manifestPath = s`${cwd}/manifest`;
 
                 if (fs.existsSync(manifestPath)) {
                     const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
@@ -77,65 +94,123 @@ export class PerfettoManager {
                     }
                 }
             } catch (error) {
-                console.error('Error reading manifest file:', error);
+                this.logger.error('Error reading manifest file:', error);
             }
         }
         return 'trace';
     }
 
+    private createWebSocket() {
+        const url = `ws://${this.config.host}:${this.config.remotePort}/perfetto-session`;
+        this.socket = new WebSocket(url);
+        return this.socket;
+    }
+
     /**
      * Start Perfetto tracing
+     * @param includeResultOnStop whether to include the file path when the 'stop' event fires. This should be false if the caller is going to emit their own 'stop' event (like when heapSnapshot is the activator of tracing.
      */
-    public async startTracing(): Promise<void> {
-        if (this.isTracing) {
-            return;
-        }
-
-        // Auto-enable if not already enabled
-        if (!this.isEnabled) {
-            await this.enableTracing();
+    public async startTracing(options?: { excludeResultOnStop: boolean }): Promise<void> {
+        if (!this.config.host) {
+            throw this.emitError(new Error('No host configured for Perfetto tracing'));
         }
 
         try {
-            // Ensure directory exists
             fsExtra.ensureDirSync(this.config.dir);
 
-            let filename = this.getFilename(this.config, this.config.dir);
+            //async sanity check, if we're already tracing, don't start again
+            if (this.socket) {
+                return;
+            }
+            this.createWebSocket();
 
-            const fullPath = pathModule.join(this.config.dir, filename);
+            this.filePath = s`${this.config.dir}/${this.getFilename()}`;
+            this.writeStream = await this.createWriteStream(this.filePath);
 
-            // Start WebSocket connection to receive trace data
-            await this.startWebSocketTracing(fullPath);
 
-            this.isTracing = true;
+            // Register all handlers before awaiting open
+            const connected = new Promise<void>((resolve, reject) => {
+                const onConnectOpen = () => {
+                    this.socket.off('error', onConnectError);
+                    resolve();
+                };
+                const onConnectError = (error: Error) => {
+                    this.socket.off('open', onConnectOpen);
+                    //remove our outer error handler since this is a connect error, not a runtime error, and we don't want to emit twice
+                    this.socket.off('error', onError);
+                    reject(error);
+                };
+                this.socket.once('open', onConnectOpen);
+                this.socket.once('error', onConnectError);
+            });
+
+            //register our general error handler next (so it'll be called second, and we can disconnect it if we get a connect error
+            const onError = (error: Error) => {
+                this.emitError(error);
+                // Force-close the socket so the 'close' handler fires cleanup + stop event
+                this.socket?.close();
+            };
+            this.socket.on('error', onError);
+
+            this.socket.on('message', (data: any, isBinary: boolean) => {
+                if (!isBinary || !this.writeStream) {
+                    return;
+                }
+                if (!this.writeStream.write(data)) {
+                    this.socket?.pause();
+                    this.writeStream.once('drain', () => this.socket?.resume());
+                }
+            });
+
+            this.socket.on('close', (code: number, reason: Buffer) => {
+                this.logger.log(`Perfetto WebSocket closed. Code: ${code} Reason: ${reason.toString()}`);
+                const filePath = this.filePath;
+                this.cleanup().then(() => {
+                    this.emit('stop', {
+                        type: 'trace',
+                        result: options?.excludeResultOnStop
+                            ? undefined
+                            : this.getResult(filePath, { skipEmpty: true })
+                    });
+                }).catch(e => this.logger.error(e));
+            });
+
+            await connected;
+
+            this.logger.log('Perfetto WebSocket connected:', this.socket.url);
+
+            this.emit('start', { type: 'trace' });
+
+            this.startPingTimer();
+
+            // we crashed, it's almost certainly due to a connection issue, we probably never started
         } catch (error) {
-            this.cleanup();
-            throw new Error(`Error starting Perfetto tracing: ${error instanceof Error ? error.message : String(error)}`);
+            throw this.emitError(new Error(`Error starting Perfetto tracing: ${error?.message ?? String(error)}`));
         }
     }
 
-    private getFilename(config: PerfettoConfig, tracesDir: string): string {
-        let filename = config.filename || '${appTitle}_${timestamp}.perfetto-trace';
+    private getFilename(): string {
+        let filename = this.config.filename ?? '${appTitle}_${timestamp}.perfetto-trace';
 
         if (filename.includes('${timestamp}')) {
             const timestamp = new Date()
                 .toLocaleString()
                 .replace(/[/:, ]/g, '-')
                 .replace(/-+/g, '-');
-            filename = filename.replace('${timestamp}', timestamp);
+            filename = filename.replaceAll('${timestamp}', timestamp);
             // Remove sequence if the user has put timestamp
             if (filename.includes('${sequence}')) {
-                filename = filename.replace(/_?\$\{sequence\}_?/g, '');
+                filename = filename.replaceAll(/_?\$\{sequence\}_?/g, '');
             }
         }
 
-        const appTitle = this.getAppTitle(config.rootDir || '');
+        const appTitle = this.getAppTitle(this.config.rootDir || '');
         if (filename.includes('${appTitle}')) {
             filename = filename.replace('${appTitle}', appTitle);
         }
 
         if (filename.includes('${sequence}')) {
-            const nextSequence = this.getNextSequenceNumber(filename, tracesDir);
+            const nextSequence = this.getNextSequenceNumber(filename, this.config.dir);
             filename = filename.replace('${sequence}', String(nextSequence));
         }
 
@@ -170,206 +245,205 @@ export class PerfettoManager {
 
             return maxSequence + 1;
         } catch (error) {
-            console.error('Error getting sequence number:', error);
+            this.logger.error('Error getting sequence number:', error);
             return 1;
         }
     }
 
     /**
-     * Stop Perfetto tracing
+     * Stop Perfetto tracing gracefully.
      */
     public async stopTracing(): Promise<void> {
         if (!this.isTracing) {
             return;
         }
-
-        // Wait for write stream to finish before closing
-        await new Promise<void>((resolve) => {
-            if (this.writeStream) {
-                this.writeStream.end(() => resolve());
-            } else {
-                resolve();
-            }
-        });
-        this.writeStream = null;
-
-        // Close WebSocket and cleanup
-        this.cleanupWebSocket();
-        this.isTracing = false;
+        await this.cleanup();
     }
 
     /**
-     * Enable tracing on the Roku device
+     * Enable tracing on the Roku device. This returns true if we were successful, and throws if we we failed to enable
      */
-    public async enableTracing(): Promise<void> {
-        console.log(
-            `Enabling Perfetto tracing on channel ${this.channelId} at host ${this.config.host}`
-        );
-        const response = await this.ecpPost(
-            `/perfetto/enable/${this.channelId}`,
-            ''
-        );
-        if (!response.ok) {
-            const responseText = await response.text().catch(() => '');
-            throw new Error(`Failed to enable tracing: ${response.status} ${response.statusText}. ${responseText}`);
+    public async enableTracing(): Promise<boolean> {
+        this.logger.log(`Enabling Perfetto tracing on channel ${this.config.channelId} at host ${this.config.host}`);
+
+        try {
+            const result = await rokuECP.enablePerfettoTracing({
+                host: this.config.host,
+                remotePort: this.config.remotePort,
+                channelId: this.config.channelId
+            });
+            //fail if our channel isn't in the list of enabled channels, even if the request was successful
+            const enabledChannels = result.enabledChannels.map(x => x?.toString()?.toLowerCase() ?? '');
+            if (!enabledChannels.includes(this.config.channelId.toLowerCase())) {
+                throw new Error(`Failed to enable tracing. The request was successful but ${this.config.channelId} was not in the list of enabled channels: ${result.enabledChannels.join(', ')}`);
+            }
+
+            //emit that the following types of profiling are enabled available to start.
+            this.emit('enable', { types: ['trace', 'heapSnapshot'] });
+            return true;
+        } catch (error) {
+            throw this.emitError(
+                Error(`Failed to enable tracing: ${error?.message}`)
+            );
         }
-        this.isEnabled = true;
     }
 
     /**
-     * Start WebSocket connection to receive trace data
+     * Create a write stream for the given file path, wrapped in a promise to handle async stream readiness and errors.
+     * This ensures we don't start writing until the stream is ready, and that any errors are properly caught and emitted.
+     * @param filePath
+     * @returns
      */
-    private startWebSocketTracing(filename: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const host = this.config.host;
-            if (!host) {
-                reject(new Error('No host configured for Perfetto tracing'));
-                return;
-            }
-            const url = `ws://${host}:${this.port}/perfetto-session`;
-            this.ws = new WebSocket(url);
-
-            // Create write stream
-            this.writeStream = fs.createWriteStream(filename, { flags: 'w' });
-
-            this.writeStream.on('error', (err) => {
-                console.error('File write error:', err);
+    private async createWriteStream(filePath: string): Promise<fs.WriteStream> {
+        const writeStream = await new Promise<fs.WriteStream>((resolve, reject) => {
+            const writeStream = fs.createWriteStream(filePath, { flags: 'w' });
+            const onReady = () => {
+                writeStream.off('error', onError);
+                resolve(writeStream);
+            };
+            const onError = (err: Error) => {
+                writeStream.off('ready', onReady);
+                this.logger.error('File write error:', err);
                 reject(err);
-            });
-
-            this.ws.on('open', () => {
-                console.log('Perfetto WebSocket connected:', url);
-
-                // Send ping every 30 seconds to keep connection alive
-                this.pingTimer = setInterval(() => {
-                    if (this.ws?.readyState === WebSocket.OPEN) {
-                        try {
-                            this.ws.ping();
-                        } catch (e) {
-                            console.error('Ping error:', e);
-                        }
-                    }
-                }, 30000);
-
-                resolve();
-            });
-
-            this.ws.on('message', (data: any, isBinary: boolean) => {
-                // Only process binary data
-                if (!isBinary || !this.writeStream) {
-                    return;
-                }
-
-                // Write to file with backpressure handling
-                if (!this.writeStream.write(data)) {
-                    this.ws?.pause();
-                    this.writeStream.once('drain', () => {
-                        this.ws?.resume();
-                    });
-                }
-            });
-
-            this.ws.on('error', (err: any) => {
-                console.error('Perfetto WebSocket error:', err);
-                reject(err);
-            });
-
-            this.ws.on('close', (code: number, reason: Buffer) => {
-                console.log(
-                    `Perfetto WebSocket closed. Code: ${code} Reason: ${reason.toString()}`
-                );
-                this.cleanupWebSocket();
-
-                // Emit closed event for code 1005 (closed without close frame)
-                if (code === 1005) {
-                    this.isTracing = false;
-                    this.emit('closed', { code, reason: reason.toString() || 'WebSocket closed unexpectedly' });
-                }
-            });
+            };
+            writeStream.once('ready', onReady);
+            writeStream.once('error', onError);
         });
+        return writeStream;
+    }
+
+    private startPingTimer(): void {
+        //skip if we're already pinging
+        if (this.pingTimer) {
+            return;
+        }
+        this.pingTimer = setInterval(() => {
+            if (this.socket?.readyState === WebSocket.OPEN) {
+                try {
+                    this.socket.ping();
+                } catch (e) {
+                    this.logger.error('Ping error:', e);
+                }
+            }
+        }, 30_000);
     }
 
     /**
-     * Clean up WebSocket and timer resources
+     * Clean up all resources. Safe to call multiple times.
+     * When isCrash is true, destroys the write stream immediately instead of flushing it.
      */
-    private cleanupWebSocket(): void {
+    private async cleanup(): Promise<void> {
         if (this.pingTimer) {
             clearInterval(this.pingTimer);
             this.pingTimer = null;
         }
 
-        if (this.ws) {
-            try {
-                this.ws.terminate();
-            } catch (e) {
-                console.error('Error closing WebSocket:', e);
+        if (this.socket) {
+            const socket = this.socket;
+            this.socket = null;
+            if (socket.readyState !== WebSocket.CLOSED) {
+                await new Promise<void>(resolve => {
+                    socket.once('close', resolve);
+                    socket.close();
+                });
             }
-            this.ws = null;
+            socket.removeAllListeners();
         }
-    }
-
-    /**
-     * Clean up all resources (used for error recovery)
-     */
-    private cleanup(): void {
-        this.cleanupWebSocket();
 
         if (this.writeStream) {
-            this.writeStream.end();
+            const writeStream = this.writeStream;
             this.writeStream = null;
+            await new Promise<void>(resolve => {
+                writeStream.end(() => resolve());
+            });
+            writeStream.removeAllListeners();
         }
 
-        this.isTracing = false;
+        this.filePath = undefined;
     }
 
     /**
-     * Make HTTP request to Roku ECP
+     * Get a file path if it exists, optionally skipping empty files.
      */
-    private async ecpPost(
-        route: string,
-        body: string
-    ): Promise<Response> {
-        if (!this.config.host) {
-            throw new Error('No host configured for Perfetto tracing');
+    private getResult(filePath: string | undefined, options?: { skipEmpty?: boolean }): string | undefined {
+        if (!filePath) {
+            return undefined;
         }
-        const url = `http://${this.config.host}:${this.port}${route}`;
-
-        return fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: body
-        });
+        try {
+            const size = fs.statSync(filePath).size;
+            if (options?.skipEmpty && size === 0) {
+                return undefined;
+            }
+            return filePath;
+        } catch {
+            return undefined;
+        }
     }
 
     /**
      * Dispose of all resources. Safe to call multiple times.
      * Closes all sockets, file handles, and timers.
      */
-    public dispose(): void {
-        this.cleanup();
-
-        // Reset additional state not covered by cleanup()
-        this.isEnabled = false;
+    public async dispose() {
+        await this.cleanup();
     }
 
     /**
      * Capture a heap graph snapshot. Can only be called when tracing is active and WebSocket is connected.
      */
     public async captureHeapSnapshot(): Promise<void> {
-        if (!this.isTracing || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            throw new Error('Cannot capture snapshot: tracing must be active.');
-        }
+        let thisFunctionStartedTracing = false;
+        try {
+            if (!this.isTracing) {
+                thisFunctionStartedTracing = true;
+                //start tracing, and exclude the result on stop
+                await this.startTracing({
+                    excludeResultOnStop: true
+                });
+            }
+            let filePath = this.filePath;
 
-        const response = await this.ecpPost(
-            `/perfetto/heapgraph/trigger/${this.channelId}`,
-            ''
-        );
-        if (!response.ok) {
-            const responseText = await response.text().catch(() => '');
-            throw new Error(`Failed to capture snapshot: ${response.status} ${response.statusText}. ${responseText}`);
+            this.emit('start', {
+                type: 'heapSnapshot'
+            });
+
+            await rokuECP.captureHeapSnapshot({
+                channelId: this.config.channelId,
+                host: this.config.host,
+                remotePort: this.config.remotePort
+            });
+
+            this.emit('stop', {
+                type: 'heapSnapshot',
+                result: thisFunctionStartedTracing
+                    ? this.getResult(filePath, { skipEmpty: true })
+                    : undefined
+            });
+        } catch (error) {
+            //regardless of success or failure, we want to emit that the snapshot process is no longer active so the UI can update accordingly
+            this.emit('stop', {
+                type: 'heapSnapshot',
+                result: undefined
+            });
+
+            if (thisFunctionStartedTracing) {
+                await this.stopTracing();
+            }
+            throw this.emitError(new Error(`Failed to capture snapshot: ${String(error)}`));
         }
-        this.emit('heapSnapshotCaptured');
+    }
+
+    /**
+     * Helper to emit an error and also return it for throwing. This ensures all errors go through the same handling and are emitted to any listeners.
+     */
+    private emitError(error: Error) {
+        this.logger.error(error);
+        this.emit('error', {
+            error: {
+                message: error.message,
+                stack: error.stack
+            }
+        });
+        return error;
     }
 }
