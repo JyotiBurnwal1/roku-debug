@@ -62,7 +62,6 @@
         "branches": 100
     },
     "devDependencies": {
-        "@sinonjs/fake-timers": "^15.1.0",
         "@types/chai": "^4.2.22",
         "@types/dateformat": "~3",
         "@types/debounce": "^1.2.1",

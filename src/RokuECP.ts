@@ -12,6 +12,45 @@ export class RokuECP {
         }
     }
 
+    /**
+     * Enables perfetto tracing for the specified channel
+     * @param channelID
+     * @returns
+     */
+    public async enablePerfettoTracing(options: BaseOptions & { channelId: string }) {
+        const response = await this.doRequest(`/perfetto/enable/${options.channelId}`, options, 'post');
+
+        return this.parseResponse(response, 'perfetto-enable', (parsed: PerfettoEnableAsJson, status): EcpPerfettoEnableData => {
+            return {
+                enabledChannels: parsed?.['enabled-channels']?.[0]?.channel ?? [],
+                timestamp: Number(parsed?.timestamp?.[0]),
+                timestampEnd: Number(parsed?.['timestamp-end']?.[0]),
+                status: status
+            };
+        });
+    }
+
+    /**
+     * capture a heap snapshot. This doesn't return it, but instead will cause it to be written to the already-connected perfetto websocket.
+     * @param channelId
+     * @returns
+     */
+    public async captureHeapSnapshot(options: BaseOptions & { channelId: string }) {
+        const response = await this.doRequest(`/perfetto/heapgraph/trigger/${options.channelId}`, options, 'post');
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw new Error('Request failed with status code ' + response.statusCode + ': ' + response.body);
+        }
+        const body = response.body as string;
+        const rootKey = /<([a-zA-Z][\w-]*)/.exec(body)?.[1];
+        if (!rootKey) {
+            throw new Error(body ?? 'Unknown error');
+        }
+        return this.parseResponse(response, rootKey, (_parsed: ParsedEcpBase, status): BaseEcpResponse => {
+            //we don't know the actual structure, so just return the status for now
+            return { status: status };
+        });
+    }
+
     private getEcpStatus(response: ParsedEcpRoot, rootKey: string): EcpStatus {
         return EcpStatus[response?.[rootKey]?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
     }
@@ -120,7 +159,7 @@ export type ParsedEcpRoot<T1 extends string = string, T2 extends ParsedEcpBase =
 
 interface ParsedEcpBase {
     status?: [string];
-    error?: [string] ;
+    error?: [string];
 }
 
 interface RegistryAsJson extends ParsedEcpBase {
@@ -172,6 +211,18 @@ export interface EcpAppStateData {
     state?: AppState;
     status: EcpStatus;
     errorMessage?: string;
+}
+
+interface PerfettoEnableAsJson extends ParsedEcpBase {
+    'enabled-channels': [{ channel: string[] }];
+    timestamp: [string];
+    'timestamp-end': [string];
+}
+
+export interface EcpPerfettoEnableData extends BaseEcpResponse {
+    enabledChannels: string[];
+    timestamp?: number;
+    timestampEnd?: number;
 }
 
 type ExitAppAsJson = ParsedEcpBase;
